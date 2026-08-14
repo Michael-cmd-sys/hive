@@ -1,6 +1,9 @@
 use crate::config::ClusterConfig;
 use crate::error::{HiveError, Result};
 use crate::ssh::Session;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static HF_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
 pub struct Worker {
@@ -36,12 +39,33 @@ pub async fn dispatch_mpi(
     args: &str,
 ) -> Result<String> {
     let hf = build_hostfile(workers);
-    let remote = "/tmp/hive_hostfile";
+    let remote = format!(
+        "/tmp/hive_hostfile_{}_{}",
+        std::process::id(),
+        HF_COUNTER.fetch_add(1, Ordering::SeqCst)
+    );
     let put = format!("cat > {remote} <<'EOF'\n{hf}EOF");
-    head.exec(&put).await?;
+    let o = head.exec(&put).await?;
+    if o.exit != 0 {
+        return Err(HiveError::Command {
+            host: head.name.clone(),
+            code: o.exit as i32,
+            stderr: o.stderr,
+        });
+    }
     let launcher = &cfg.mpi.launcher;
     let defaults = &cfg.mpi.default_args;
-    let cmd = format!("{launcher} -hostfile {remote} {defaults} {args} {binary}");
+    // `args` is passed through unquoted by design so callers can supply raw
+    // mpirun flags; only `binary` is quoted to avoid word-splitting on spaces.
+    let cmd = format!("{launcher} -hostfile {remote} {defaults} {args} \"{binary}\"");
     let o = head.exec(&cmd).await?;
+    let _ = head.exec(&format!("rm -f {remote}")).await;
+    if o.exit != 0 {
+        return Err(HiveError::Command {
+            host: head.name.clone(),
+            code: o.exit as i32,
+            stderr: format!("{}\n{}", o.stdout, o.stderr),
+        });
+    }
     Ok(format!("exit={}\n{}\n{}", o.exit, o.stdout, o.stderr))
 }
