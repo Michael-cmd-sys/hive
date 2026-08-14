@@ -12,6 +12,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - *(ui)* Give bottom bar 2 rows so input/help text renders
 - *(ui)* Vertically center the HIVE banner on the splash screen
 - Add missing Dioxus site src + explicit bin target (retro CRT theme)
+- *(site)* Resolve Dioxus E0283 — use format-string literals for dynamic attrs
 
 ### CI
 
@@ -34,6 +35,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 
 ### Miscellaneous
 
+- Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
