@@ -1,0 +1,24 @@
+# Example hive cluster configuration.
+# Copy this to `cluster.yaml` (next to the `hive` binary) and edit it.
+# Passwords are prompted for at runtime and are NEVER written to this file.
+
+poll_interval_ms: 2000          # how often telemetry is sampled (ms)
+
+mpi:
+  launcher: mpirun              # MPI launcher used for dispatch
+  default_args: ""              # extra flags passed to every mpirun invocation
+
+machines:
+  - name: node-00               # label shown in the UI
+    host: 192.168.1.10          # hostname or IP
+    port: 22                    # SSH port (default 22)
+    user: ubuntu                # SSH user
+    method: password            # auth: password, or key (below)
+    tags: [web, primary]        # optional, free-form grouping
+
+  - name: node-01
+    host: 192.168.1.11
+    user: ubuntu
+    method: key                 # use an SSH key instead of a password
+    key_path: /home/you/.ssh/id_ed25519
+    tags: [worker]

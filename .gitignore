@@ -2,3 +2,6 @@
 **/*.rs.bk
 *.swp
 .DS_Store
+
+# Local cluster config (templated by cluster.yaml.example)
+cluster.yaml
