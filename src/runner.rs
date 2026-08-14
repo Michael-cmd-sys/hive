@@ -3,6 +3,7 @@ use crate::config::{ClusterConfig, MachineConfig};
 use crate::jobs::{dispatch_mpi, run_on, Worker};
 use crate::metrics::{MachineStats, parse_free_m, parse_loadavg, parse_mpstat, parse_nproc, parse_uptime};
 use crate::ssh::Session;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -38,10 +39,24 @@ async fn spawn_machine(mc: MachineConfig, ui: Ui, poll_ms: u64) {
         }
     };
     ui.send(UiEvent::Conn { name: mc.name.clone(), status: ConnStatus::Connected }).ok();
+    let mut consecutive_errors: u32 = 0;
     loop {
         match collect_stats(&mut session).await {
-            Ok(stats) => { ui.send(UiEvent::Stats { name: mc.name.clone(), stats }).ok(); }
-            Err(e) => { ui.send(UiEvent::Log(format!("{} stats err: {e}", mc.name))).ok(); }
+            Ok(stats) => {
+                consecutive_errors = 0;
+                ui.send(UiEvent::Stats { name: mc.name.clone(), stats }).ok();
+            }
+            Err(e) => {
+                ui.send(UiEvent::Log(format!("{} stats err: {e}", mc.name))).ok();
+                consecutive_errors += 1;
+                if consecutive_errors >= 3 {
+                    ui.send(UiEvent::Conn {
+                        name: mc.name.clone(),
+                        status: ConnStatus::Error("connection lost / metrics failing".into()),
+                    }).ok();
+                    break;
+                }
+            }
         }
         tokio::time::sleep(std::time::Duration::from_millis(poll_ms)).await;
     }
@@ -52,6 +67,7 @@ pub async fn run_dispatcher(
     ui: Ui,
     cfg: Arc<ClusterConfig>,
 ) {
+    let mut handles: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
     while let Some(action) = rx.recv().await {
         match action {
             Action::Quit => break,
@@ -65,11 +81,20 @@ pub async fn run_dispatcher(
                     if need {
                         let ui2 = ui.clone();
                         let mc2 = mc.clone();
-                        tokio::spawn(async move { spawn_machine(mc2, ui2, poll).await });
+                        if let Some(old) = handles.get(&mc.name) {
+                            old.abort();
+                        }
+                        let h = tokio::spawn(async move { spawn_machine(mc2, ui2, poll).await });
+                        handles.insert(mc.name.clone(), h);
                     }
                 }
             }
-            Action::Disconnect(_) => { /* poller keeps running; acceptable for this iteration */ }
+            Action::Disconnect(name) => {
+                if let Some(h) = handles.remove(&name) {
+                    h.abort();
+                }
+                ui.send(UiEvent::Conn { name: name.clone(), status: ConnStatus::Disconnected }).ok();
+            }
             Action::SaveConfig(c) => {
                 let path = std::env::var("HIVE_CONFIG").unwrap_or_else(|_| "cluster.yaml".into());
                 if let Err(e) = c.save(std::path::Path::new(&path)) {
