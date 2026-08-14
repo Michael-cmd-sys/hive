@@ -1,5 +1,6 @@
 use crate::app::{AppState, ConnStatus};
-use ratatui::layout::Rect;
+use crate::tui::banner;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem};
@@ -24,6 +25,13 @@ fn status_label(s: &ConnStatus) -> String {
 }
 
 pub fn render(state: &AppState, f: &mut Frame, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(9), Constraint::Min(0)])
+        .split(area);
+
+    banner::render(f, chunks[0]);
+
     let items: Vec<ListItem> = state
         .machines
         .iter()
@@ -51,5 +59,5 @@ pub fn render(state: &AppState, f: &mut Frame, area: Rect) {
             .borders(Borders::ALL)
             .title("Machines (Tab to switch, c=connect all, q=quit)"),
     );
-    f.render_widget(list, area);
+    f.render_widget(list, chunks[1]);
 }

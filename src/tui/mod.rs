@@ -1,3 +1,4 @@
+pub mod banner;
 pub mod machines;
 pub mod monitor;
 pub mod run;
