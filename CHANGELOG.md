@@ -1,0 +1,51 @@
+# Changelog
+
+All notable changes to this project are documented here, grouped by release.
+This project follows [Conventional Commits](https://www.conventionalcommits.org).
+## [unreleased]
+
+### Bug Fixes
+
+- *(ci)* Correct git-cliff action repo to orhun/git-cliff-action
+- *(ci)* Install zig via mlugg/setup-zig instead of apt
+- *(ci)* Changelog workflow must stage new CHANGELOG.md before diffing
+
+### CI
+
+- Add git-cliff + cargo-release versioning and cross-platform release workflow
+
+### Features
+
+- Add hive ASCII banner on Machines (landing) tab
+## [0.1.0] — 2026-08-14
+
+### Bug Fixes
+
+- Add lib.rs, wire error module, add Yaml error variant
+- *(config)* Align Default with serde defaults, propagate mkdir error, test empty-secret validation
+- *(metrics)* Bounds-safe parsers, doc comments, clippy clean
+- *(jobs)* Verify hostfile write, unique path, propagate MPI failure, cleanup
+- *(runner)* Recover dead sessions, real disconnect via task abort
+- *(tui)* Cap logs/run_output/mpi_output growth
+- RAII terminal guard, drop dead test line, clarify README
+
+### Features
+
+- Cluster config load/save with validation
+- Metrics parsing with fixtures
+- Russh session connect + exec (russh 0.62)
+- Jobs - hostfile builder, run_on, dispatch_mpi
+- App state, channels, action/event types
+- Background dispatcher + per-machine metrics poller
+- Tui core loop, router, and machines/monitor/run/mpi/logs tabs
+- Wire main, key routing, integration test, README
+
+### Miscellaneous
+
+- Scaffold hive project
+- Ignore target/ and untrack build artifacts
+
+### Security
+
+- *(config)* Redact password in Auth Debug impl
+
