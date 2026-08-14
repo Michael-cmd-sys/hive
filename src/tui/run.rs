@@ -9,8 +9,10 @@ pub fn render(state: &AppState, f: &mut Frame, area: Rect) {
         .constraints([Constraint::Length(2), Constraint::Min(0)])
         .split(area);
 
-    let header = Paragraph::new("Target: all connected. Key: r = run `uname -a` on all (sample).")
-        .block(Block::default().borders(Borders::ALL).title("Run"));
+    let header = Paragraph::new(
+        "Press Enter to type a command, then Enter again to run it on all machines. 'r' re-runs `uname -a`.",
+    )
+    .block(Block::default().borders(Borders::ALL).title("Run"));
     let body = Paragraph::new(state.run_output.clone())
         .block(Block::default().borders(Borders::ALL).title("Run Output"));
     f.render_widget(header, chunks[0]);

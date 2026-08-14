@@ -1,4 +1,3 @@
-use crate::config::ClusterConfig;
 use crate::metrics::MachineStats;
 use std::collections::HashMap;
 
@@ -49,7 +48,7 @@ pub enum Action {
     Connect(String),
     ConnectAll,
     Disconnect(String),
-    SaveConfig(ClusterConfig),
+    SaveConfig,
     Run {
         targets: Vec<String>,
         cmd: String,
@@ -63,6 +62,28 @@ pub enum Action {
     Quit,
 }
 
+/// What the current text-input line is for.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum InputTarget {
+    #[default]
+    None,
+    RunCommand,
+    MpiCommand,
+    AddField,
+}
+
+/// Partial fields collected while adding a machine via the TUI wizard.
+#[derive(Debug, Clone, Default)]
+pub struct AddDraft {
+    pub step: usize,
+    pub name: String,
+    pub host: String,
+    pub user: String,
+    /// "p" = password, "k" = ssh key
+    pub method: String,
+    pub secret: String,
+}
+
 pub struct AppState {
     pub tab: Tab,
     pub machines: Vec<MachineView>,
@@ -72,6 +93,13 @@ pub struct AppState {
     pub mpi_output: String,
     pub status: String,
     pub quit: bool,
+    // Interactive input state
+    pub editing: bool,
+    pub input: String,
+    pub input_target: InputTarget,
+    pub secret: bool,
+    pub add: Option<AddDraft>,
+    pub selected: usize,
 }
 
 impl Default for AppState {
@@ -85,6 +113,12 @@ impl Default for AppState {
             mpi_output: String::new(),
             status: String::new(),
             quit: false,
+            editing: false,
+            input: String::new(),
+            input_target: InputTarget::None,
+            secret: false,
+            add: None,
+            selected: 0,
         }
     }
 }

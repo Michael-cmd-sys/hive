@@ -1,4 +1,3 @@
-pub mod banner;
 pub mod machines;
 pub mod monitor;
 pub mod run;
@@ -11,17 +10,20 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::Local;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Tabs};
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 use ratatui::Frame;
 use ratatui::Terminal;
 use tokio::sync::mpsc::unbounded_channel;
 
-use crate::app::{Action, AppState, ConnStatus, LogEntry, MachineView, Tab, UiEvent};
-use crate::config::ClusterConfig;
+use crate::app::{
+    Action, AddDraft, AppState, ConnStatus, InputTarget, LogEntry, MachineView, Tab, UiEvent,
+};
+use crate::config::{Auth, ClusterConfig, MachineConfig};
 use crate::runner::run_dispatcher;
 
 const TAB_NAMES: [&str; 5] = ["Machines", "Monitor", "Run", "MPI", "Logs"];
@@ -46,9 +48,50 @@ fn next_tab(tab: Tab) -> Tab {
     }
 }
 
-pub fn run(state: &mut AppState, cfg: Arc<ClusterConfig>) -> io::Result<()> {
+/// Prompt text + whether the input should be masked, for the current input target.
+fn input_prompt(state: &AppState) -> (String, bool) {
+    match &state.input_target {
+        InputTarget::RunCommand => ("Run command on all nodes:".into(), false),
+        InputTarget::MpiCommand => ("MPI job — binary + args (e.g. ./app -n 4):".into(), false),
+        InputTarget::AddField => {
+            let d = state.add.as_ref().unwrap();
+            match d.step {
+                0 => ("New machine — name:".into(), false),
+                1 => ("New machine — host (ip or hostname):".into(), false),
+                2 => ("New machine — ssh user:".into(), false),
+                3 => ("Auth — type 'p' (password) or 'k' (ssh key):".into(), false),
+                4 => {
+                    if d.method == "k" {
+                        ("SSH key path:".into(), false)
+                    } else {
+                        ("Password:".into(), true)
+                    }
+                }
+                _ => ("".into(), false),
+            }
+        }
+        InputTarget::None => ("".into(), false),
+    }
+}
+
+fn help_text(state: &AppState) -> String {
+    if state.editing {
+        return "".into();
+    }
+    match state.tab {
+        Tab::Machines => "a add · c connect all · Enter connect · ↑/↓ select · s save · Tab switch · q quit".into(),
+        Tab::Monitor => "Tab switch · q quit".into(),
+        Tab::Run => "Enter type a command · Tab switch · q quit".into(),
+        Tab::Mpi => "Enter type a job · Tab switch · q quit".into(),
+        Tab::Logs => "Tab switch · q quit".into(),
+    }
+}
+
+pub fn run(state: &mut AppState, cfg: Arc<Mutex<ClusterConfig>>) -> io::Result<()> {
     let mut app = std::mem::take(state);
     app.machines = cfg
+        .lock()
+        .unwrap()
         .machines
         .iter()
         .map(|m| MachineView {
@@ -75,6 +118,7 @@ pub fn run(state: &mut AppState, cfg: Arc<ClusterConfig>) -> io::Result<()> {
 
         let key_state = state.clone();
         let key_action = action_tx.clone();
+        let key_cfg = cfg.clone();
         let key_handle = thread::spawn(move || {
             loop {
                 if let Ok(g) = key_state.lock() {
@@ -84,50 +128,11 @@ pub fn run(state: &mut AppState, cfg: Arc<ClusterConfig>) -> io::Result<()> {
                 }
                 if event::poll(Duration::from_millis(100)).unwrap_or(false) {
                     if let Ok(Event::Key(k)) = event::read() {
-                        match k.code {
-                            KeyCode::Char('q') => {
-                                let _ = key_action.send(Action::Quit);
-                                if let Ok(mut g) = key_state.lock() {
-                                    g.quit = true;
-                                }
-                                break;
-                            }
-                            KeyCode::Tab => {
-                                if let Ok(mut g) = key_state.lock() {
-                                    g.tab = next_tab(g.tab.clone());
-                                }
-                            }
-                            KeyCode::Char('c') => {
-                                let _ = key_action.send(Action::ConnectAll);
-                            }
-                            KeyCode::Char('r') => {
-                                let targets = key_state
-                                    .lock()
-                                    .map(|g| g.machines.iter().map(|m| m.name.clone()).collect::<Vec<_>>())
-                                    .unwrap_or_default();
-                                let _ = key_action.send(Action::Run {
-                                    targets,
-                                    cmd: "uname -a".into(),
-                                });
-                            }
-                            KeyCode::Char('m') => {
-                                let (head, workers) = key_state
-                                    .lock()
-                                    .map(|g| {
-                                        let ws: Vec<String> =
-                                            g.machines.iter().map(|m| m.name.clone()).collect();
-                                        let h = ws.first().cloned().unwrap_or_default();
-                                        (h, ws)
-                                    })
-                                    .unwrap_or_default();
-                                let _ = key_action.send(Action::LaunchMpi {
-                                    head,
-                                    workers,
-                                    binary: "hostname".into(),
-                                    args: String::new(),
-                                });
-                            }
-                            _ => {}
+                        let editing = key_state.lock().map(|g| g.editing).unwrap_or(false);
+                        if editing {
+                            handle_edit(&key_state, &key_cfg, &key_action, k);
+                        } else {
+                            handle_global(&key_state, &key_action, k);
                         }
                     }
                 }
@@ -154,6 +159,222 @@ pub fn run(state: &mut AppState, cfg: Arc<ClusterConfig>) -> io::Result<()> {
         key_handle.join().ok();
         Ok::<(), io::Error>(())
     })
+}
+
+fn all_names(state: &AppState) -> Vec<String> {
+    state.machines.iter().map(|m| m.name.clone()).collect()
+}
+
+fn handle_global(
+    state: &Arc<Mutex<AppState>>,
+    action: &tokio::sync::mpsc::UnboundedSender<Action>,
+    k: KeyEvent,
+) {
+    let mut g = state.lock().unwrap();
+    match k.code {
+        KeyCode::Char('q') => {
+            let _ = action.send(Action::Quit);
+            g.quit = true;
+        }
+        KeyCode::Tab => {
+            g.tab = next_tab(g.tab.clone());
+        }
+        KeyCode::Char('c') => {
+            let _ = action.send(Action::ConnectAll);
+        }
+        KeyCode::Char('s') => {
+            let _ = action.send(Action::SaveConfig);
+        }
+        KeyCode::Char('a') if matches!(g.tab, Tab::Machines) => {
+            g.editing = true;
+            g.input_target = InputTarget::AddField;
+            g.add = Some(AddDraft::default());
+            g.input.clear();
+            g.secret = false;
+        }
+        KeyCode::Up if matches!(g.tab, Tab::Machines) => {
+            g.selected = g.selected.saturating_sub(1);
+        }
+        KeyCode::Down if matches!(g.tab, Tab::Machines) => {
+            let max = g.machines.len().saturating_sub(1);
+            g.selected = (g.selected + 1).min(max);
+        }
+        KeyCode::Enter if matches!(g.tab, Tab::Machines) => {
+            if let Some(m) = g.machines.get(g.selected).cloned() {
+                let _ = action.send(Action::Connect(m.name));
+            }
+        }
+        KeyCode::Enter if matches!(g.tab, Tab::Run) => {
+            g.editing = true;
+            g.input_target = InputTarget::RunCommand;
+            g.input.clear();
+            g.secret = false;
+        }
+        KeyCode::Enter if matches!(g.tab, Tab::Mpi) => {
+            g.editing = true;
+            g.input_target = InputTarget::MpiCommand;
+            g.input.clear();
+            g.secret = false;
+        }
+        KeyCode::Char('r') => {
+            if matches!(g.tab, Tab::Run) {
+                let targets = all_names(&g);
+                drop(g);
+                let _ = action.send(Action::Run {
+                    targets,
+                    cmd: "uname -a".into(),
+                });
+            }
+        }
+        KeyCode::Char('m') => {
+            if matches!(g.tab, Tab::Mpi) {
+                let targets = all_names(&g);
+                let head = targets.first().cloned().unwrap_or_default();
+                drop(g);
+                let _ = action.send(Action::LaunchMpi {
+                    head,
+                    workers: targets,
+                    binary: "hostname".into(),
+                    args: String::new(),
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Returns true when the wizard was finalized (machine added) so the caller can act.
+fn finalize_add(state: &Arc<Mutex<AppState>>, cfg: &Arc<Mutex<ClusterConfig>>, action: &tokio::sync::mpsc::UnboundedSender<Action>) {
+    let (mc, name) = {
+        let mut g = state.lock().unwrap();
+        let d = match g.add.take() {
+            Some(d) => d,
+            None => return,
+        };
+        let auth = if d.method == "k" {
+            Auth::Key {
+                key_path: d.secret.clone(),
+            }
+        } else {
+            Auth::Password {
+                password: d.secret.clone(),
+            }
+        };
+        let mc = MachineConfig {
+            name: d.name.trim().to_string(),
+            host: d.host.trim().to_string(),
+            port: 22,
+            user: d.user.trim().to_string(),
+            auth,
+            tags: Vec::new(),
+        };
+        let name = mc.name.clone();
+        g.machines.push(MachineView {
+            name: mc.name.clone(),
+            host: mc.host.clone(),
+            status: ConnStatus::Connecting,
+            tags: Vec::new(),
+        });
+        g.editing = false;
+        g.input_target = InputTarget::None;
+        g.input.clear();
+        g.secret = false;
+        (mc, name)
+    };
+    // Persist into the shared config and connect.
+    cfg.lock().unwrap().machines.push(mc);
+    let _ = action.send(Action::SaveConfig);
+    let _ = action.send(Action::Connect(name));
+}
+
+fn handle_edit(
+    state: &Arc<Mutex<AppState>>,
+    cfg: &Arc<Mutex<ClusterConfig>>,
+    action: &tokio::sync::mpsc::UnboundedSender<Action>,
+    k: KeyEvent,
+) {
+    let mut g = state.lock().unwrap();
+    match k.code {
+        KeyCode::Esc => {
+            g.editing = false;
+            g.input_target = InputTarget::None;
+            g.input.clear();
+            g.secret = false;
+            g.add = None;
+        }
+        KeyCode::Backspace => {
+            g.input.pop();
+        }
+        KeyCode::Enter => match g.input_target {
+            InputTarget::RunCommand => {
+                let cmd = std::mem::take(&mut g.input);
+                let targets = all_names(&g);
+                g.editing = false;
+                g.input_target = InputTarget::None;
+                g.secret = false;
+                drop(g);
+                let _ = action.send(Action::Run { targets, cmd });
+            }
+            InputTarget::MpiCommand => {
+                let raw = std::mem::take(&mut g.input);
+                let targets = all_names(&g);
+                g.editing = false;
+                g.input_target = InputTarget::None;
+                g.secret = false;
+                let mut parts = raw.split_whitespace();
+                let binary = parts.next().unwrap_or_default().to_string();
+                let args = parts.collect::<Vec<_>>().join(" ");
+                drop(g);
+                let head = targets.first().cloned().unwrap_or_default();
+                let _ = action.send(Action::LaunchMpi {
+                    head,
+                    workers: targets,
+                    binary,
+                    args,
+                });
+            }
+            InputTarget::AddField => {
+                let value = std::mem::take(&mut g.input);
+                let (step, method_for_secret) = {
+                    let d = g.add.get_or_insert_with(AddDraft::default);
+                    let step = d.step;
+                    match step {
+                        0 => d.name = value.clone(),
+                        1 => d.host = value.clone(),
+                        2 => d.user = value.clone(),
+                        3 => {
+                            d.method = value.chars().next().unwrap_or('p').to_string().to_lowercase();
+                        }
+                        _ => {}
+                    }
+                    (step, d.method != "k")
+                };
+                if step == 4 {
+                    if let Some(d) = g.add.as_mut() {
+                        d.secret = value;
+                    }
+                    drop(g);
+                    finalize_add(state, cfg, action);
+                    return;
+                }
+                if step == 3 {
+                    g.secret = method_for_secret;
+                } else {
+                    g.secret = false;
+                }
+                if let Some(d) = g.add.as_mut() {
+                    d.step += 1;
+                }
+            }
+            InputTarget::None => {
+                g.editing = false;
+            }
+        },
+        KeyCode::Char(c) => {
+            g.input.push(c);
+        }
+        _ => {}
+    }
 }
 
 pub fn apply_event(state: &mut AppState, ev: UiEvent) {
@@ -204,7 +425,7 @@ pub fn ui(state: &AppState, f: &mut Frame) {
     let size: Rect = f.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
         .split(size);
 
     let tabs = Tabs::new(TAB_NAMES.iter().map(|s| Line::from(*s)).collect::<Vec<_>>())
@@ -218,5 +439,31 @@ pub fn ui(state: &AppState, f: &mut Frame) {
         Tab::Run => run::render(state, f, chunks[1]),
         Tab::Mpi => mpi::render(state, f, chunks[1]),
         Tab::Logs => logs::render(state, f, chunks[1]),
+    }
+
+    // Bottom bar: input prompt when editing, otherwise contextual help.
+    if state.editing {
+        let (prompt, secret) = input_prompt(state);
+        let shown: String = if secret {
+            "*".repeat(state.input.chars().count())
+        } else {
+            state.input.clone()
+        };
+        let line = Line::from(vec![
+            Span::styled("> ", Style::default().fg(Color::Yellow)),
+            Span::raw(format!("{prompt} ")),
+            Span::styled(shown, Style::default().fg(Color::White)),
+        ]);
+        let bar = Paragraph::new(line).block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(Color::Yellow)),
+        );
+        f.render_widget(bar, chunks[2]);
+    } else {
+        let bar = Paragraph::new(help_text(state))
+            .style(Style::default().fg(Color::DarkGray))
+            .block(Block::default().borders(Borders::TOP));
+        f.render_widget(bar, chunks[2]);
     }
 }

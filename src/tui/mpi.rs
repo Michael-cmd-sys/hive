@@ -10,7 +10,7 @@ pub fn render(state: &AppState, f: &mut Frame, area: Rect) {
         .split(area);
 
     let header = Paragraph::new(
-        "Head: first node. Workers: all. Assumes mpirun + binary preinstalled. Key: m = launch sample MPI.",
+        "Press Enter to type 'binary args', then Enter to launch across all nodes via mpirun (head = first node).",
     )
     .block(Block::default().borders(Borders::ALL).title("MPI"));
     let body = Paragraph::new(state.mpi_output.clone())

@@ -3,6 +3,7 @@ use hive::app::AppState;
 use hive::config::ClusterConfig;
 use hive::tui;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 struct TerminalGuard;
 impl Drop for TerminalGuard {
@@ -24,7 +25,7 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let cfg = ClusterConfig::load(&cli.config)?;
     std::env::set_var("HIVE_CONFIG", cli.config.to_string_lossy().to_string());
-    let cfg = std::sync::Arc::new(cfg);
+    let cfg = Arc::new(Mutex::new(cfg));
 
     crossterm::terminal::enable_raw_mode()?;
     crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen)?;

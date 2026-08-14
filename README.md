@@ -25,11 +25,27 @@ machines:
 cargo run -- --config ./cluster.yaml
 
 ## Keys
-- Tab: switch tabs (Machines / Monitor / Run / MPI / Logs)
-- c: connect to all machines
-- r: run `uname -a` on all nodes (sample)
-- m: launch a sample MPI job across all nodes (assumes mpirun + binary preinstalled)
-- q: quit
+Global: Tab = switch tabs · c = connect to all · s = save config · q = quit
+
+Machines tab:
+- `a` — add a machine interactively (name → host → ssh user → password or ssh key). It connects immediately and saves to cluster.yaml.
+- `↑` / `↓` — select a machine
+- `Enter` — connect to the selected machine
+- `c` — connect to all machines in the config
+
+Run tab:
+- `Enter` — type any shell command, then `Enter` again to run it on every machine
+- `r` — quick re-run `uname -a` on all nodes
+
+MPI tab:
+- `Enter` — type `binary args` (e.g. `./app -n 4`), then `Enter` to launch across all nodes via mpirun
+- `m` — launch a sample MPI job (`hostname`)
+
+While typing, `Esc` cancels; passwords are masked.
+
+## First run
+With no cluster.yaml, the Machines tab shows an onboarding hint. Press `a` to add your first node,
+or drop a cluster.yaml next to the binary and press `c`.
 
 ## Security
 Passwords are stored in plaintext YAML (per the project requirement). The app writes the file
