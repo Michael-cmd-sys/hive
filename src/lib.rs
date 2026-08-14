@@ -5,3 +5,4 @@ pub mod jobs;
 pub mod metrics;
 pub mod runner;
 pub mod ssh;
+pub mod tui;
