@@ -13,6 +13,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 ### CI
 
 - Add git-cliff + cargo-release versioning and cross-platform release workflow
+- Force bash shell for artifact staging step (windows runner defaults to pwsh)
 
 ### Features
 
@@ -20,6 +21,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 
 ### Miscellaneous
 
+- Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 
 ### Ux
