@@ -25,7 +25,6 @@ body {
   font-size: 15px;
   line-height: 1.55;
 }
-/* CRT scanline + flicker overlay */
 body::after {
   content: "";
   position: fixed;
@@ -45,7 +44,6 @@ body::after {
 a { color: var(--amber); text-decoration: none; border-bottom: 1px dotted var(--amber); }
 a:hover { background: rgba(255,176,0,0.12); }
 
-/* hero */
 .hero { border: 1px solid var(--line); background: var(--panel); padding: 2rem 1.5rem; position: relative; }
 .hero::before {
   content: "SYSTEM // hive"; position: absolute; top: -0.7rem; left: 1rem;
@@ -60,7 +58,6 @@ a:hover { background: rgba(255,176,0,0.12); }
 .cursor { display: inline-block; width: 0.6em; height: 1.05em; background: var(--fg); margin-left: 2px; vertical-align: -0.18em; animation: blink 1.1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
-/* telemetry grid */
 .tele { margin-top: 2.5rem; }
 .tele h2, .sec h2 { font-size: 0.8rem; letter-spacing: 3px; color: var(--fg-dim); text-transform: uppercase; border-bottom: 1px solid var(--line); padding-bottom: 0.35rem; margin: 0 0 0.9rem; }
 .nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.6rem; }
@@ -106,7 +103,7 @@ fn main() {
 
 fn app() -> Element {
     rsx! {
-        style { {CSS} }
+        style { dangerous_inner_html: "{CSS}" }
         div { class: "wrap",
             section { class: "hero",
                 h1 { class: "wordmark glow", "hive" }
@@ -121,15 +118,20 @@ fn app() -> Element {
                 h2 { "live cluster telemetry" }
                 div { class: "nodes",
                     for (id, load, state) in NODES {
-                        div { class: "node",
-                            div { class: "id", "{id}" }
-                            div { class: "bar",
-                                i {
-                                    class: if *load >= 85 { "hot" } else if *load >= 70 { "warn" } else { "" },
-                                    width: "{load}%",
+                        {
+                            let cls = if *load >= 85 { "hot" } else if *load >= 70 { "warn" } else { "" };
+                            rsx! {
+                                div { class: "node",
+                                    div { class: "id", "{id}" }
+                                    div { class: "bar",
+                                        i {
+                                            class: "{cls}",
+                                            style: "width: {load}%",
+                                        }
+                                    }
+                                    div { class: "meta", "load {load}% · {state}" }
                                 }
                             }
-                            div { class: "meta", "load {load}% · {state}" }
                         }
                     }
                 }
