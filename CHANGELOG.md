@@ -9,6 +9,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - *(ci)* Correct git-cliff action repo to orhun/git-cliff-action
 - *(ci)* Install zig via mlugg/setup-zig instead of apt
 - *(ci)* Changelog workflow must stage new CHANGELOG.md before diffing
+- *(ui)* Give bottom bar 2 rows so input/help text renders
 
 ### CI
 
@@ -21,6 +22,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 
 ### Miscellaneous
 
+- Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 
