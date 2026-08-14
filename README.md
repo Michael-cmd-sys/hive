@@ -121,15 +121,22 @@ Global keys: **`Tab`** / **`←` `→`** / **`h` `l`** switch tabs · **`c`** co
 
 | Key     | Action                                                            |
 | ------- | ----------------------------------------------------------------- |
-| `Enter` | Type a shell command, then `Enter` again to run it on all nodes. |
-| `r`     | Quick re-run `uname -a` on every node.                            |
+| `Enter` | Type a shell command, then `Enter` again to submit it.           |
+| `t`     | Toggle command scope: **all nodes** ⇄ **selected machine** (shown in the prompt). |
+| `r`     | Quick re-run `uname -a` on the current scope.                     |
 
 **MPI**
 
 | Key     | Action                                                            |
 | ------- | ----------------------------------------------------------------- |
 | `Enter` | Type `binary args` (e.g. `./app -n 4`), then `Enter` to launch.  |
-| `m`     | Launch a sample job (`hostname`).                                |
+| `t`     | Toggle job scope: **all nodes** ⇄ **selected machine**.          |
+| `m`     | Launch a sample job (`hostname`) on the current scope.           |
+
+> **Scope is visible, never hidden.** The input prompt always names the target
+> (`Run on all nodes:` vs `Run on node3:`), and `t` flips between the whole fleet
+> and just the machine highlighted in the Machines tab. This keeps single-node
+> runs (e.g. a local box) deliberate rather than accidental.
 
 While typing, **`Esc`** cancels. Password and key-path inputs are masked. Required fields are
 validated — empty input is rejected with an on-screen error instead of being submitted.

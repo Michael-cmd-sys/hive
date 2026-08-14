@@ -100,6 +100,15 @@ pub enum InputTarget {
     PasswordPrompt(String),
 }
 
+/// Whether a typed Run/MPI command targets the whole fleet or just the
+/// selected machine. Kept visible in the UI so there is no hidden mode.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum TargetScope {
+    #[default]
+    All,
+    Selected,
+}
+
 /// Partial fields collected while adding a machine via the TUI wizard.
 #[derive(Debug, Clone, Default)]
 pub struct AddDraft {
@@ -134,6 +143,8 @@ pub struct AppState {
     pub error: Option<String>,
     /// When true the next 'y'/'n' confirms or cancels a nuclear wipe.
     pub confirm_wipe: bool,
+    /// Run/MPI command scope: the whole fleet or just the selected machine.
+    pub target_scope: TargetScope,
 }
 
 impl Default for AppState {
@@ -156,6 +167,7 @@ impl Default for AppState {
             secrets: HashMap::new(),
             error: None,
             confirm_wipe: false,
+            target_scope: TargetScope::All,
         }
     }
 }

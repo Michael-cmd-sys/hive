@@ -23,7 +23,8 @@ use ratatui::Terminal;
 use tokio::sync::mpsc::unbounded_channel;
 
 use crate::app::{
-    Action, AddDraft, AppState, ConnStatus, InputTarget, LogEntry, MachineView, Tab, UiEvent,
+    Action, AddDraft, AppState, ConnStatus, InputTarget, LogEntry, MachineView, Tab, TargetScope,
+    UiEvent,
 };
 use crate::config::{Auth, ClusterConfig, MachineConfig};
 use crate::runner::run_dispatcher;
@@ -90,8 +91,12 @@ fn show_splash(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Res
 /// Prompt text + whether the input should be masked, for the current input target.
 fn input_prompt(state: &AppState) -> (String, bool) {
     match &state.input_target {
-        InputTarget::RunCommand => ("Run command on all nodes:".into(), false),
-        InputTarget::MpiCommand => ("MPI job — binary + args (e.g. ./app -n 4):".into(), false),
+        InputTarget::RunCommand => {
+            (format!("Run on {}: ", scope_label(state)), false)
+        }
+        InputTarget::MpiCommand => {
+            (format!("MPI on {} — binary + args (e.g. ./app -n 4): ", scope_label(state)), false)
+        }
         InputTarget::AddField => {
             let d = state.add.as_ref().unwrap();
             match d.step {
@@ -126,8 +131,8 @@ fn help_text(state: &AppState) -> String {
             "a add · d delete · D wipe all · Enter connect · ↑/↓ or j/k select · c connect all · s save · Tab/←→/h l switch · q quit".into()
         }
         Tab::Monitor => "Tab/←→/h l switch · q quit".into(),
-        Tab::Run => "Enter type a command · Tab/←→/h l switch · q quit".into(),
-        Tab::Mpi => "Enter type a job · Tab/←→/h l switch · q quit".into(),
+        Tab::Run => "Enter type · t target (all/selected) · r quick uname -a · Tab/←→/h l switch · q quit".into(),
+        Tab::Mpi => "Enter type · t target (all/selected) · m sample · Tab/←→/h l switch · q quit".into(),
         Tab::Logs => "Tab/←→/h l switch · q quit".into(),
     }
 }
@@ -222,6 +227,30 @@ fn all_names(state: &AppState) -> Vec<String> {
     state.machines.iter().map(|m| m.name.clone()).collect()
 }
 
+/// Targets for a Run/MPI command given the visible scope toggle: the whole
+/// fleet, or just the currently selected machine.
+fn scope_targets(state: &AppState) -> Vec<String> {
+    match state.target_scope {
+        TargetScope::All => all_names(state),
+        TargetScope::Selected => state
+            .machines
+            .get(state.selected)
+            .map(|m| vec![m.name.clone()])
+            .unwrap_or_default(),
+    }
+}
+
+fn scope_label(state: &AppState) -> String {
+    match state.target_scope {
+        TargetScope::All => "all nodes".into(),
+        TargetScope::Selected => state
+            .machines
+            .get(state.selected)
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| "selected (none)".into()),
+    }
+}
+
 fn handle_global(
     state: &Arc<Mutex<AppState>>,
     action: &tokio::sync::mpsc::UnboundedSender<Action>,
@@ -313,9 +342,18 @@ fn handle_global(
             g.input.clear();
             g.secret = false;
         }
+        KeyCode::Char('t')
+            if matches!(g.tab, Tab::Run) || matches!(g.tab, Tab::Mpi) =>
+        {
+            // Toggle command scope: whole fleet <-> selected machine.
+            g.target_scope = match g.target_scope {
+                TargetScope::All => TargetScope::Selected,
+                TargetScope::Selected => TargetScope::All,
+            };
+        }
         KeyCode::Char('r') => {
             if matches!(g.tab, Tab::Run) {
-                let targets = all_names(&g);
+                let targets = scope_targets(&g);
                 drop(g);
                 let _ = action.send(Action::Run {
                     targets,
@@ -325,7 +363,7 @@ fn handle_global(
         }
         KeyCode::Char('m') => {
             if matches!(g.tab, Tab::Mpi) {
-                let targets = all_names(&g);
+                let targets = scope_targets(&g);
                 let head = targets.first().cloned().unwrap_or_default();
                 drop(g);
                 let _ = action.send(Action::LaunchMpi {
@@ -420,7 +458,7 @@ fn handle_edit(
             match target {
             InputTarget::RunCommand => {
                 let cmd = std::mem::take(&mut g.input);
-                let targets = all_names(&g);
+                let targets = scope_targets(&g);
                 g.editing = false;
                 g.input_target = InputTarget::None;
                 g.secret = false;
@@ -429,7 +467,7 @@ fn handle_edit(
             }
             InputTarget::MpiCommand => {
                 let raw = std::mem::take(&mut g.input);
-                let targets = all_names(&g);
+                let targets = scope_targets(&g);
                 g.editing = false;
                 g.input_target = InputTarget::None;
                 g.secret = false;
@@ -741,5 +779,60 @@ mod tests {
         let g = state.lock().unwrap();
         assert_eq!(g.add.as_ref().unwrap().step, 0, "should stay on name step");
         assert!(g.error.is_some(), "empty field should produce an error");
+    }
+
+    #[test]
+    fn run_command_targets_selected_when_scope_is_selected() {
+        let state = Arc::new(Mutex::new(AppState::default()));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Action>();
+        {
+            let mut g = state.lock().unwrap();
+            g.tab = Tab::Run;
+            g.machines = vec![
+                MachineView {
+                    name: "n1".into(),
+                    host: "h".into(),
+                    status: ConnStatus::Disconnected,
+                    tags: vec![],
+                    auth_method: "key".into(),
+                },
+                MachineView {
+                    name: "n2".into(),
+                    host: "h".into(),
+                    status: ConnStatus::Disconnected,
+                    tags: vec![],
+                    auth_method: "key".into(),
+                },
+            ];
+            g.selected = 1;
+            g.target_scope = TargetScope::Selected;
+        }
+        // Open the run input, type a command, submit.
+        handle_global(
+            &state,
+            &tx,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+        );
+        for ch in ['e', 'c', 'h', 'o'] {
+            handle_edit(
+                &state,
+                &Arc::new(Mutex::new(ClusterConfig::default())),
+                &tx,
+                KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE),
+            );
+        }
+        handle_edit(
+            &state,
+            &Arc::new(Mutex::new(ClusterConfig::default())),
+            &tx,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+        );
+        match rx.try_recv().unwrap() {
+            Action::Run { targets, cmd } => {
+                assert_eq!(targets, vec!["n2".to_string()], "should target selected only");
+                assert_eq!(cmd, "echo");
+            }
+            other => panic!("unexpected action: {other:?}"),
+        }
     }
 }
