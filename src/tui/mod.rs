@@ -170,14 +170,31 @@ pub fn apply_event(state: &mut AppState, ev: UiEvent) {
                 ts: Local::now().format("%H:%M:%S").to_string(),
                 msg,
             });
+            if state.logs.len() > 1000 {
+                state.logs.drain(0..state.logs.len() - 1000);
+            }
         }
         UiEvent::RunOutput { name, out } => {
             state
                 .run_output
                 .push_str(&format!("== {name} ==\n{out}\n"));
+            if state.run_output.chars().count() > 5000 {
+                state.run_output = state
+                    .run_output
+                    .chars()
+                    .skip(state.run_output.chars().count() - 5000)
+                    .collect();
+            }
         }
         UiEvent::MpiOutput(out) => {
             state.mpi_output.push_str(&format!("{out}\n"));
+            if state.mpi_output.chars().count() > 5000 {
+                state.mpi_output = state
+                    .mpi_output
+                    .chars()
+                    .skip(state.mpi_output.chars().count() - 5000)
+                    .collect();
+            }
         }
     }
 }
