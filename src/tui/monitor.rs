@@ -6,13 +6,20 @@ use ratatui::widgets::{Block, Borders, Gauge, Paragraph};
 use ratatui::Frame;
 
 fn cpu_color(pct: f32) -> Color {
-    if pct > 80.0 {
+    if pct >= 85.0 {
         Color::Red
-    } else if pct > 50.0 {
+    } else if pct >= 70.0 {
         Color::Yellow
     } else {
         Color::Green
     }
+}
+
+/// Map a 0-100 load to an 1/8-block glyph so each core can be drawn compactly
+/// in a single line.
+fn core_glyph(load: f32) -> char {
+    let idx = ((load / 100.0) * 8.0).round().clamp(0.0, 8.0) as usize;
+    [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'][idx]
 }
 
 pub fn render(state: &AppState, f: &mut Frame, area: Rect) {
@@ -49,7 +56,7 @@ pub fn render(state: &AppState, f: &mut Frame, area: Rect) {
             ])
             .split(inner);
 
-        let (cpu, mem_ratio) = match stats {
+        let (cpu, mem_ratio, per_core) = match stats {
             Some(s) => (
                 s.cpu_percent,
                 if s.mem_total_mib > 0 {
@@ -57,15 +64,38 @@ pub fn render(state: &AppState, f: &mut Frame, area: Rect) {
                 } else {
                     0.0
                 },
+                s.cpu_per_core.as_slice(),
             ),
-            None => (0.0, 0.0),
+            None => (0.0, 0.0, &[][..]),
         };
 
-        let cpu_gauge = Gauge::default()
-            .ratio((cpu as f64 / 100.0).clamp(0.0, 1.0))
-            .label(format!("CPU {cpu:.0}%"))
-            .gauge_style(Style::default().fg(cpu_color(cpu)));
-        f.render_widget(cpu_gauge, node_chunks[0]);
+        // Per-core CPU load as a compact strip of 1/8-block glyphs, each
+        // colored by its own load. The per-node average is shown as a summary.
+        let mut cpu_spans = vec![Span::styled(
+            "CPU/core ",
+            Style::default().fg(Color::DarkGray),
+        )];
+        if per_core.is_empty() {
+            cpu_spans.push(Span::styled(
+                "(no data)",
+                Style::default().fg(Color::DarkGray),
+            ));
+        } else {
+            for (i, c) in per_core.iter().enumerate() {
+                if i > 0 {
+                    cpu_spans.push(Span::raw(" "));
+                }
+                cpu_spans.push(Span::styled(
+                    core_glyph(*c).to_string(),
+                    Style::default().fg(cpu_color(*c)),
+                ));
+            }
+            cpu_spans.push(Span::styled(
+                format!("  avg {:.0}%", cpu),
+                Style::default().fg(cpu_color(cpu)),
+            ));
+        }
+        f.render_widget(Paragraph::new(Line::from(cpu_spans)), node_chunks[0]);
 
         let mem_gauge = Gauge::default()
             .ratio((mem_ratio as f64).clamp(0.0, 1.0))

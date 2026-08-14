@@ -1,7 +1,10 @@
 use crate::app::{Action, ConnStatus, UiEvent};
 use crate::config::{ClusterConfig, MachineConfig};
 use crate::jobs::{dispatch_mpi, run_on, Worker};
-use crate::metrics::{MachineStats, parse_free_m, parse_loadavg, parse_mpstat, parse_nproc, parse_ps, parse_uptime};
+use crate::metrics::{
+    MachineStats, cpu_busy_between, parse_free_m, parse_loadavg, parse_nproc, parse_ps,
+    parse_uptime, split_proc_stat,
+};
 use crate::ssh::Session;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -13,11 +16,25 @@ async fn collect_stats(session: &mut Session) -> anyhow::Result<MachineStats> {
     let cores = parse_nproc(&session.exec("nproc").await?.stdout)?;
     let (mem_used, mem_total) = parse_free_m(&session.exec("free -m").await?.stdout)?;
     let (load1, load5, load15) = parse_loadavg(&session.exec("cat /proc/loadavg").await?.stdout)?;
-    // parse_mpstat returns idle %; busy = 100 - idle
-    let cpu_idle = match session.exec("mpstat 1 1 2>/dev/null || top -bn1").await {
-        Ok(o) => parse_mpstat(&o.stdout).unwrap_or(100.0),
-        Err(_) => 100.0,
+    // Per-core CPU load is read straight from `/proc/stat` — no external tool
+    // required (unlike `mpstat`, which is part of sysstat and frequently
+    // absent). We sample it twice ~1s apart and diff the jiffy counters.
+    let cpu_raw = match session
+        .exec("cat /proc/stat; echo '---HIVE-SPLIT---'; sleep 1; cat /proc/stat")
+        .await
+    {
+        Ok(o) => o.stdout,
+        Err(_) => String::new(),
     };
+    let (prev, cur) = split_proc_stat(&cpu_raw);
+    let (mut cpu_percent, mut cpu_per_core) = cpu_busy_between(&prev, &cur);
+    if cpu_per_core.is_empty() {
+        // /proc/stat unavailable (non-Linux / unreadable): degrade to a flat
+        // line so the UI still renders something rather than blank cores.
+        cpu_per_core = vec![cpu_percent; cores.max(1) as usize];
+    } else {
+        cpu_percent = cpu_per_core.iter().sum::<f32>() / cpu_per_core.len() as f32;
+    }
     let uptime = parse_uptime(&session.exec("cat /proc/uptime").await?.stdout)?;
     // Top processes by CPU (portable: sort in Rust, no GNU --sort needed).
     let top_procs = session
@@ -36,7 +53,8 @@ async fn collect_stats(session: &mut Session) -> anyhow::Result<MachineStats> {
         .unwrap_or_default();
     Ok(MachineStats {
         cores,
-        cpu_percent: 100.0 - cpu_idle,
+        cpu_percent,
+        cpu_per_core,
         mem_used_mib: mem_used,
         mem_total_mib: mem_total,
         load1, load5, load15,
