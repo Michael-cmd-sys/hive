@@ -2,10 +2,12 @@
 
 > SSH cluster orchestration for the swarm — a fast terminal UI to manage, monitor, and command a lab cluster from one place.
 
+**Website:** [michael-cmd-sys.github.io/hive](https://michael-cmd-sys.github.io/hive/)
+
 `hive` is a Rust + [ratatui](https://github.com/ratatui-rs/ratatui) terminal application for
 scientific-computing clusters. It connects to many machines over SSH (password **or** key),
 shows live per-node CPU / memory / load, runs shell commands across the fleet, and launches
-MPI jobs — all from a single keyboard-driven界面.
+MPI jobs — all from a single keyboard-driven interface.
 
 ---
 
