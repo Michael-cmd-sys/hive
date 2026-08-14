@@ -54,6 +54,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Stage artifact
+        shell: bash
         run: |
           mkdir -p stage
           if [ "${{ matrix.builder }}" = "zigbuild" ] && [[ "${{ matrix.target }}" == *windows* ]]; then
