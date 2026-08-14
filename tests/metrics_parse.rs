@@ -52,4 +52,26 @@ fn builds_stats_struct() {
         uptime_secs: 12345.0,
     };
     assert!(s.cpu_percent < 100.0);
+
+    let s2 = MachineStats {
+        cores: 8,
+        cpu_percent: 7.0,
+        mem_used_mib: 2000,
+        mem_total_mib: 15920,
+        load1: 0.5,
+        load5: 0.3,
+        load15: 0.2,
+        uptime_secs: 12345.0,
+    };
+    assert_eq!(s, s2);
+
+    let def = MachineStats::default();
+    assert_eq!(def.cores, 0u32);
+    assert_eq!(def.cpu_percent, 0.0);
+    assert_eq!(def.mem_used_mib, 0);
+    assert_eq!(def.mem_total_mib, 0);
+    assert_eq!(def.load1, 0.0);
+    assert_eq!(def.load5, 0.0);
+    assert_eq!(def.load15, 0.0);
+    assert_eq!(def.uptime_secs, 0.0);
 }
