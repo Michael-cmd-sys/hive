@@ -1,0 +1,9 @@
+[package]
+name = "hive-site"
+version = "0.1.0"
+edition = "2021"
+description = "Project website for hive — SSH cluster orchestration for the swarm"
+license = "MIT"
+
+[dependencies]
+dioxus = { version = "0.6", features = ["web"] }
