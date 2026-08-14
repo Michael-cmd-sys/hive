@@ -50,6 +50,16 @@ fn next_tab(tab: Tab) -> Tab {
     }
 }
 
+fn prev_tab(tab: Tab) -> Tab {
+    match tab {
+        Tab::Machines => Tab::Logs,
+        Tab::Monitor => Tab::Machines,
+        Tab::Run => Tab::Monitor,
+        Tab::Mpi => Tab::Run,
+        Tab::Logs => Tab::Mpi,
+    }
+}
+
 /// Prompt text + whether the input should be masked, for the current input target.
 fn input_prompt(state: &AppState) -> (String, bool) {
     match &state.input_target {
@@ -86,12 +96,12 @@ fn help_text(state: &AppState) -> String {
     }
     match state.tab {
         Tab::Machines => {
-            "a add · d delete · D wipe all · Enter connect · ↑/↓ select · c connect all · s save · Tab switch · q quit".into()
+            "a add · d delete · D wipe all · Enter connect · ↑/↓ or j/k select · c connect all · s save · Tab/←→/h l switch · q quit".into()
         }
-        Tab::Monitor => "Tab switch · q quit".into(),
-        Tab::Run => "Enter type a command · Tab switch · q quit".into(),
-        Tab::Mpi => "Enter type a job · Tab switch · q quit".into(),
-        Tab::Logs => "Tab switch · q quit".into(),
+        Tab::Monitor => "Tab/←→/h l switch · q quit".into(),
+        Tab::Run => "Enter type a command · Tab/←→/h l switch · q quit".into(),
+        Tab::Mpi => "Enter type a job · Tab/←→/h l switch · q quit".into(),
+        Tab::Logs => "Tab/←→/h l switch · q quit".into(),
     }
 }
 
@@ -193,8 +203,11 @@ fn handle_global(
             let _ = action.send(Action::Quit);
             g.quit = true;
         }
-        KeyCode::Tab => {
+        KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
             g.tab = next_tab(g.tab.clone());
+        }
+        KeyCode::Left | KeyCode::Char('h') => {
+            g.tab = prev_tab(g.tab.clone());
         }
         KeyCode::Char('c') => {
             let _ = action.send(Action::ConnectAll);
@@ -209,10 +222,10 @@ fn handle_global(
             g.input.clear();
             g.secret = false;
         }
-        KeyCode::Up if matches!(g.tab, Tab::Machines) => {
+        KeyCode::Up | KeyCode::Char('k') if matches!(g.tab, Tab::Machines) => {
             g.selected = g.selected.saturating_sub(1);
         }
-        KeyCode::Down if matches!(g.tab, Tab::Machines) => {
+        KeyCode::Down | KeyCode::Char('j') if matches!(g.tab, Tab::Machines) => {
             let max = g.machines.len().saturating_sub(1);
             g.selected = (g.selected + 1).min(max);
         }

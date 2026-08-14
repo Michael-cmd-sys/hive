@@ -1,12 +1,73 @@
 # hive
 
-A Rust + ratatui TUI to SSH into multiple lab machines (password or SSH key),
-monitor their CPU/RAM/load live, run commands, and launch MPI jobs across the cluster.
+> SSH cluster orchestration for the swarm — a fast terminal UI to manage, monitor, and command a lab cluster from one place.
 
-## Build
+`hive` is a Rust + [ratatui](https://github.com/ratatui-rs/ratatui) terminal application for
+scientific-computing clusters. It connects to many machines over SSH (password **or** key),
+shows live per-node CPU / memory / load, runs shell commands across the fleet, and launches
+MPI jobs — all from a single keyboard-driven界面.
+
+---
+
+## Features
+
+- **Machines** — add, connect, delete, or wipe cluster nodes interactively (no YAML editing required).
+- **Live monitoring** — per-node CPU busy %, RAM, load average, core count, and uptime, polled on an interval.
+- **Ad-hoc commands** — type a command once and run it on every node; output streams back into the TUI.
+- **MPI dispatch** — launch `mpirun` jobs across the cluster with a generated `HOSTFILE`.
+- **Secure by default** — passwords are kept **only in memory** for the life of the process and are
+  never written to disk; config files are created `0600`.
+- **Zero agent** — uses plain `ssh`/shell commands on the remote side; nothing to install on the nodes.
+
+---
+
+## Installation
+
+### From source
+
+```bash
+git clone https://github.com/Michael-cmd-sys/hive
+cd hive
 cargo build --release
+# binary: target/release/hive
+```
 
-## Config (cluster.yaml)
+### With cargo
+
+```bash
+cargo install --path .
+```
+
+### Prebuilt binaries
+
+Production binaries for **Linux (gnu + musl)**, **Windows**, and **macOS** are produced by CI:
+
+- `rolling` — latest build from `main` (prerelease).
+- `vX.Y.Z` — tagged stable releases.
+
+Grab `hive-<target>` from the **Releases** page.
+
+---
+
+## Quick start
+
+```bash
+# run with a config next to the binary (or pass --config)
+cargo run -- --config ./cluster.yaml
+```
+
+With **no config**, the Machines tab shows an onboarding hint. Press **`a`** to add your first
+node interactively, or drop a `cluster.yaml` next to the binary and press **`c`** to connect to all.
+
+On launch you are greeted by the **hive** banner on the Logs tab.
+
+---
+
+## Configuration
+
+`hive` reads a YAML file (default `cluster.yaml`, override with `--config <path>`). Example:
+
+```yaml
 poll_interval_ms: 2000
 mpi:
   launcher: mpirun
@@ -17,61 +78,139 @@ machines:
     port: 22
     user: alice
     auth:
-      method: password
-      password: "secret"
+      method: password        # secret is NOT stored; you are prompted at connect time
     tags: [gpu, lab]
+  - name: node2
+    host: node2.local
+    user: bob
+    auth:
+      method: key
+      key_path: ~/.ssh/id_ed25519
+```
 
-## Run
-cargo run -- --config ./cluster.yaml
+| Field           | Meaning                                                            |
+| --------------- | ----------------------------------------------------------------- |
+| `name`          | Friendly label shown in the UI.                                   |
+| `host`          | IP or hostname (resolvable from the machine running `hive`).     |
+| `port`          | SSH port (default `22`).                                          |
+| `user`          | Remote SSH user.                                                  |
+| `auth.method`   | `password` or `key`.                                              |
+| `auth.key_path` | Path to a private key (expanded via `~`); used when `method: key`.|
 
-## Keys
-Global: Tab = switch tabs · c = connect to all · s = save config · q = quit
+> **Passwords are never persisted.** A `password` machine stores only the method; the secret is
+> collected in-memory when you add the node and re-prompted on connect after a restart.
 
-Machines tab:
-- `a` — add a machine interactively (name → host → ssh user → password or ssh key). It connects immediately and saves to cluster.yaml.
-- `↑` / `↓` — select a machine
-- `Enter` — connect to the selected machine
-- `c` — connect to all machines in the config
+---
 
-Run tab:
-- `Enter` — type any shell command, then `Enter` again to run it on every machine
-- `r` — quick re-run `uname -a` on all nodes
+## Usage
 
-MPI tab:
-- `Enter` — type `binary args` (e.g. `./app -n 4`), then `Enter` to launch across all nodes via mpirun
-- `m` — launch a sample MPI job (`hostname`)
+Global keys: **`Tab`** / **`←` `→`** / **`h` `l`** switch tabs · **`c`** connect to all · **`s`** save config · **`q`** quit.
 
-While typing, `Esc` cancels; passwords are masked.
+**Machines**
 
-## First run
-With no cluster.yaml, the Machines tab shows an onboarding hint. Press `a` to add your first node,
-or drop a cluster.yaml next to the binary and press `c`.
+| Key            | Action                                                            |
+| -------------- | ----------------------------------------------------------------- |
+| `a`            | Add a machine interactively (name → host → ssh user → auth).     |
+| `↑`/`↓` or `j`/`k` | Select a machine.                                            |
+| `Enter`        | Connect to the selected machine (prompts for a password if needed).|
+| `d`            | Delete the selected machine (updates `cluster.yaml`).            |
+| `D`            | **Nuclear wipe** — erase *every* machine. Confirm with `y` (`n`/`Esc` cancels).|
+| `c`            | Connect to all machines in the config.                           |
 
-## Security
-Passwords are stored in plaintext YAML (per the project requirement). The app writes the file
-with 0600 permissions, redacts secrets in `Debug` output and logs, and skips SSH host-key
-verification (lab-only, not for production). Prefer SSH keys where possible.
+**Run**
+
+| Key     | Action                                                            |
+| ------- | ----------------------------------------------------------------- |
+| `Enter` | Type a shell command, then `Enter` again to run it on all nodes. |
+| `r`     | Quick re-run `uname -a` on every node.                            |
+
+**MPI**
+
+| Key     | Action                                                            |
+| ------- | ----------------------------------------------------------------- |
+| `Enter` | Type `binary args` (e.g. `./app -n 4`), then `Enter` to launch.  |
+| `m`     | Launch a sample job (`hostname`).                                |
+
+While typing, **`Esc`** cancels. Password and key-path inputs are masked. Required fields are
+validated — empty input is rejected with an on-screen error instead of being submitted.
+
+---
+
+## Architecture
+
+```
+┌────────────┐   Actions    ┌──────────────────┐   SSH    ┌──────────────┐
+│   TUI      │ ───────────▶ │   dispatcher     │ ───────▶ │  cluster    │
+│ (ratatui)  │ ◀─────────── │   (tokio task)   │ ◀─────── │  nodes      │
+└────────────┘   UiEvents   └──────────────────┘          └──────────────┘
+```
+
+- `src/tui` — rendering and key handling (one module per tab + `banner`).
+- `src/runner.rs` — async dispatcher that owns SSH sessions, polling, and the in-memory secret store.
+- `src/ssh.rs` — `russh`-based session wrapper.
+- `src/metrics.rs` — parse `nproc`/`free`/`mpstat`/`loadavg`/`uptime` into stats.
+- `src/config.rs` — `ClusterConfig` (de)serialization, `0600` on write.
+- `src/jobs.rs` — ad-hoc command runner and MPI `HOSTFILE`/dispatch.
+
+Stats are gathered with ordinary remote shell commands, so no agent binary is required on the
+nodes.
+
+---
+
+## Security model
+
+- **Passwords are in-memory only.** `Auth::Password` stores no secret; the password lives in the
+  dispatcher's `secrets` map for the process lifetime and is re-prompted after a restart.
+- **Config files are `0600`.** Written with owner-only permissions where the platform allows.
+- **SSH host-key verification is disabled** (`check_server_key` always returns `true`). This is
+  intentional for trusted lab networks and is **not** suitable for untrusted networks — prefer SSH
+  keys and a proper `known_hosts` check before any production use.
+
+---
+
+## Development
+
+```bash
+cargo build                 # debug build
+cargo test                  # unit + integration tests
+cargo clippy --all-targets  # lints
+cargo run -- --config dev.yaml
+```
+
+Integration tests live under `tests/`; `tests/live_smoke.rs` is `#[ignore]` and requires
+`HIVE_TEST_SSH` + `HIVE_TEST_PW` to run against a real host.
+
+---
 
 ## Releases & versioning
 
-This repo uses [Conventional Commits](https://www.conventionalcommits.org) + [git-cliff](https://github.com/orhun/git-cliff) + [cargo-release](https://github.com/crate-ci/cargo-release).
+This repo uses [Conventional Commits](https://www.conventionalcommits.org) +
+[git-cliff](https://github.com/orhun/git-cliff) + [cargo-release](https://github.com/crate-ci/cargo-release).
 
-- **CHANGELOG.md** is regenerated automatically on every push to `main` (see `.github/workflows/changelog.yml`).
-- **Push to `main`** builds production binaries for Linux (gnu + musl), Windows, and macOS and
-  publishes them as a rolling **prerelease** named `rolling` (see `.github/workflows/release.yml`).
-- **Pushing a version tag** (`vX.Y.Z`) builds the same binaries and publishes a proper
-  GitHub Release with the generated changelog as its notes.
+- **`CHANGELOG.md`** is regenerated automatically on every push to `main`
+  (`.github/workflows/changelog.yml`).
+- **Push to `main`** builds binaries for Linux (gnu + musl), Windows, and macOS and publishes them
+  as a rolling prerelease tagged `rolling` (`.github/workflows/release.yml`).
+- **Pushing a `vX.Y.Z` tag** builds the same binaries and publishes a GitHub Release with the
+  generated changelog.
 
-### Cut a release
+Cut a release:
 
 ```bash
 cargo install cargo-release git-cliff   # one-time
-cargo release patch --execute           # bumps 0.1.0 -> 0.1.1, tags v0.1.1, pushes
-git push --tags                         # triggers the versioned GitHub Release
+cargo release patch --execute           # 0.1.0 -> 0.1.1, tags v0.1.1
+git push --tags                         # triggers the versioned release
 ```
 
-### Download a binary
+---
 
-Go to **Releases** on GitHub: `rolling` for the latest CI build, or a `vX.Y.Z` tag for a
-versioned release. Binaries are named `hive-<target>` (e.g. `hive-x86_64-unknown-linux-gnu`).
+## Contributing
 
+Issues and PRs welcome. Please follow Conventional Commits so the changelog stays meaningful, and
+run `cargo clippy --all-targets` before opening a PR.
+
+---
+
+## License
+
+MIT — see `LICENSE`.
