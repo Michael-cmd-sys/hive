@@ -10,4 +10,4 @@ name = "hive-site"
 path = "src/main.rs"
 
 [dependencies]
-dioxus = { version = "0.6", features = ["web"] }
+dioxus = { version = "0.7", features = ["web"] }

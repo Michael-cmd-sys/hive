@@ -1,6 +1,2 @@
 [application]
 name = "hive-site"
-default_features = ["web"]
-
-[web]
-base_path = "/hive/"
