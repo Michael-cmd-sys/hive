@@ -32,7 +32,7 @@ pub fn render(state: &AppState, f: &mut Frame, area: Rect) {
         let p = ratatui::widgets::Paragraph::new(hint).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Machines (a=add, c=connect all, s=save)"),
+                .title("Machines (a=add, d=delete, D=wipe all, c=connect all, s=save)"),
         );
         f.render_widget(p, area);
         return;
@@ -75,13 +75,12 @@ pub fn render(state: &AppState, f: &mut Frame, area: Rect) {
     let mut list_state = ListState::default();
     list_state.select(Some(state.selected));
 
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Machines (a=add, Enter=connect, c=connect all, s=save)"),
-        )
-        .highlight_symbol("")
-        .highlight_style(Style::default());
+    let list =
+        List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(
+                "Machines (a=add, d=delete, D=wipe all, Enter=connect, c=connect all, s=save)",
+            ))
+            .highlight_symbol("")
+            .highlight_style(Style::default());
     f.render_stateful_widget(list, area, &mut list_state);
 }

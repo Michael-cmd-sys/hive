@@ -2,21 +2,17 @@ use crate::error::HiveError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "lowercase")]
 pub enum Auth {
-    Password { password: String },
-    Key { key_path: String },
-}
-
-// Redacting Debug so secrets never leak into logs / {:?} output.
-impl std::fmt::Debug for Auth {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Auth::Password { .. } => f.write_str("Password { password: \"<redacted>\" }"),
-            Auth::Key { key_path } => f.debug_struct("Key").field("key_path", key_path).finish(),
-        }
-    }
+    /// Password auth. The secret is deliberately NOT serialized: it is kept
+    /// only in memory for the life of the process (see `Runner::secrets`) and
+    /// the user is prompted for it when needed. Nothing sensitive is written
+    /// to cluster.yaml.
+    Password,
+    Key {
+        key_path: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,9 +61,7 @@ impl Default for MachineConfig {
             host: String::new(),
             port: default_port(),
             user: String::new(),
-            auth: Auth::Password {
-                password: String::new(),
-            },
+            auth: Auth::Password,
             tags: Vec::new(),
         }
     }
@@ -125,14 +119,10 @@ impl ClusterConfig {
 
     fn validate(&self) -> Result<(), HiveError> {
         for m in &self.machines {
-            match &m.auth {
-                Auth::Password { password } if password.is_empty() => {
-                    return Err(HiveError::Config(format!("{}: empty password", m.name)))
+            if let Auth::Key { key_path } = &m.auth {
+                if key_path.is_empty() {
+                    return Err(HiveError::Config(format!("{}: empty key_path", m.name)));
                 }
-                Auth::Key { key_path } if key_path.is_empty() => {
-                    return Err(HiveError::Config(format!("{}: empty key_path", m.name)))
-                }
-                _ => {}
             }
         }
         Ok(())

@@ -3,7 +3,9 @@ pub mod monitor;
 pub mod run;
 pub mod mpi;
 pub mod logs;
+pub mod banner;
 
+use std::collections::HashMap;
 use std::io;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -71,6 +73,7 @@ fn input_prompt(state: &AppState) -> (String, bool) {
             }
         }
         InputTarget::None => ("".into(), false),
+        InputTarget::PasswordPrompt(_) => ("Password (not stored on disk):".into(), true),
     }
 }
 
@@ -78,8 +81,13 @@ fn help_text(state: &AppState) -> String {
     if state.editing {
         return "".into();
     }
+    if state.confirm_wipe {
+        return "WIPE ALL? press 'y' to erase every machine · 'n' or Esc to cancel".into();
+    }
     match state.tab {
-        Tab::Machines => "a add · c connect all · Enter connect · ↑/↓ select · s save · Tab switch · q quit".into(),
+        Tab::Machines => {
+            "a add · d delete · D wipe all · Enter connect · ↑/↓ select · c connect all · s save · Tab switch · q quit".into()
+        }
         Tab::Monitor => "Tab switch · q quit".into(),
         Tab::Run => "Enter type a command · Tab switch · q quit".into(),
         Tab::Mpi => "Enter type a job · Tab switch · q quit".into(),
@@ -87,7 +95,11 @@ fn help_text(state: &AppState) -> String {
     }
 }
 
-pub fn run(state: &mut AppState, cfg: Arc<Mutex<ClusterConfig>>) -> io::Result<()> {
+pub fn run(
+    state: &mut AppState,
+    cfg: Arc<Mutex<ClusterConfig>>,
+    secrets: Arc<Mutex<HashMap<String, String>>>,
+) -> io::Result<()> {
     let mut app = std::mem::take(state);
     app.machines = cfg
         .lock()
@@ -99,6 +111,10 @@ pub fn run(state: &mut AppState, cfg: Arc<Mutex<ClusterConfig>>) -> io::Result<(
             host: m.host.clone(),
             status: ConnStatus::Disconnected,
             tags: m.tags.clone(),
+            auth_method: match &m.auth {
+                Auth::Password => "password".into(),
+                Auth::Key { .. } => "key".into(),
+            },
         })
         .collect();
     let state = Arc::new(Mutex::new(app));
@@ -111,8 +127,9 @@ pub fn run(state: &mut AppState, cfg: Arc<Mutex<ClusterConfig>>) -> io::Result<(
         {
             let ui_tx = ui_tx.clone();
             let cfg = cfg.clone();
+            let secrets = secrets.clone();
             tokio::spawn(async move {
-                run_dispatcher(action_rx, ui_tx, cfg).await;
+                run_dispatcher(action_rx, ui_tx, cfg, secrets).await;
             });
         }
 
@@ -201,7 +218,44 @@ fn handle_global(
         }
         KeyCode::Enter if matches!(g.tab, Tab::Machines) => {
             if let Some(m) = g.machines.get(g.selected).cloned() {
-                let _ = action.send(Action::Connect(m.name));
+                // Password auth with no in-memory secret → prompt for it.
+                if m.auth_method == "password" && !g.secrets.contains_key(&m.name) {
+                    g.editing = true;
+                    g.input_target = InputTarget::PasswordPrompt(m.name);
+                    g.input.clear();
+                    g.secret = true;
+                    g.error = None;
+                } else {
+                    let _ = action.send(Action::Connect(m.name));
+                }
+            }
+        }
+        // --- Nuclear wipe flow (confirm then y / cancel with n or Esc) ---
+        KeyCode::Char('y') if g.confirm_wipe => {
+            g.confirm_wipe = false;
+            drop(g);
+            let _ = action.send(Action::ClearAll);
+        }
+        KeyCode::Char('n') if g.confirm_wipe => {
+            g.confirm_wipe = false;
+        }
+        KeyCode::Esc if g.confirm_wipe => {
+            g.confirm_wipe = false;
+        }
+        KeyCode::Char('D')
+            if matches!(g.tab, Tab::Machines) && !g.confirm_wipe && !g.machines.is_empty() =>
+        {
+            g.confirm_wipe = true;
+        }
+        KeyCode::Char('d') if matches!(g.tab, Tab::Machines) && !g.confirm_wipe => {
+            if let Some(m) = g.machines.get(g.selected).cloned() {
+                let idx = g.selected;
+                g.machines.remove(idx);
+                if g.selected >= g.machines.len() && g.selected > 0 {
+                    g.selected -= 1;
+                }
+                drop(g);
+                let _ = action.send(Action::RemoveMachine(m.name));
             }
         }
         KeyCode::Enter if matches!(g.tab, Tab::Run) => {
@@ -243,22 +297,26 @@ fn handle_global(
     }
 }
 
-/// Returns true when the wizard was finalized (machine added) so the caller can act.
+/// Finalizes the add-machine wizard: builds the config, persists it (without
+/// the password), seeds the in-memory secret store, and connects.
 fn finalize_add(state: &Arc<Mutex<AppState>>, cfg: &Arc<Mutex<ClusterConfig>>, action: &tokio::sync::mpsc::UnboundedSender<Action>) {
-    let (mc, name) = {
+    let (mc, name, is_password, secret) = {
         let mut g = state.lock().unwrap();
         let d = match g.add.take() {
             Some(d) => d,
             None => return,
         };
-        let auth = if d.method == "k" {
-            Auth::Key {
-                key_path: d.secret.clone(),
-            }
+        let (auth, method, is_password, secret) = if d.method == "k" {
+            (
+                Auth::Key {
+                    key_path: d.secret.trim().to_string(),
+                },
+                "key".to_string(),
+                false,
+                String::new(),
+            )
         } else {
-            Auth::Password {
-                password: d.secret.clone(),
-            }
+            (Auth::Password, "password".to_string(), true, d.secret.clone())
         };
         let mc = MachineConfig {
             name: d.name.trim().to_string(),
@@ -274,15 +332,24 @@ fn finalize_add(state: &Arc<Mutex<AppState>>, cfg: &Arc<Mutex<ClusterConfig>>, a
             host: mc.host.clone(),
             status: ConnStatus::Connecting,
             tags: Vec::new(),
+            auth_method: method,
         });
         g.editing = false;
         g.input_target = InputTarget::None;
         g.input.clear();
         g.secret = false;
-        (mc, name)
+        (mc, name, is_password, secret)
     };
-    // Persist into the shared config and connect.
+    // Persist into the shared config (password is NOT written) and connect.
     cfg.lock().unwrap().machines.push(mc);
+    if is_password {
+        // Keep the password in memory only; never touch disk.
+        state.lock().unwrap().secrets.insert(name.clone(), secret.clone());
+        let _ = action.send(Action::SeedSecret {
+            name: name.clone(),
+            password: secret,
+        });
+    }
     let _ = action.send(Action::SaveConfig);
     let _ = action.send(Action::Connect(name));
 }
@@ -305,7 +372,9 @@ fn handle_edit(
         KeyCode::Backspace => {
             g.input.pop();
         }
-        KeyCode::Enter => match g.input_target {
+        KeyCode::Enter => {
+            let target = g.input_target.clone();
+            match target {
             InputTarget::RunCommand => {
                 let cmd = std::mem::take(&mut g.input);
                 let targets = all_names(&g);
@@ -335,9 +404,34 @@ fn handle_edit(
             }
             InputTarget::AddField => {
                 let value = std::mem::take(&mut g.input);
-                let (step, method_for_secret) = {
+                let step = g.add.as_ref().map(|d| d.step).unwrap_or(0);
+                // Validate: required text fields must not be empty.
+                let invalid = match step {
+                    0 if value.trim().is_empty() => Some("name can't be empty"),
+                    1 if value.trim().is_empty() => Some("host can't be empty"),
+                    2 if value.trim().is_empty() => Some("ssh user can't be empty"),
+                    3 if !matches!(value.to_lowercase().as_str(), "p" | "k") => {
+                        Some("type 'p' (password) or 'k' (ssh key)")
+                    }
+                    4 => {
+                        let method = g.add.as_ref().map(|d| d.method.clone()).unwrap_or_else(|| "p".into());
+                        if method == "k" && value.trim().is_empty() {
+                            Some("ssh key path can't be empty")
+                        } else if method != "k" && value.trim().is_empty() {
+                            Some("password can't be empty")
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(msg) = invalid {
+                    g.error = Some(msg.into());
+                    return;
+                }
+                g.error = None;
+                let method_for_secret = {
                     let d = g.add.get_or_insert_with(AddDraft::default);
-                    let step = d.step;
                     match step {
                         0 => d.name = value.clone(),
                         1 => d.host = value.clone(),
@@ -347,7 +441,7 @@ fn handle_edit(
                         }
                         _ => {}
                     }
-                    (step, d.method != "k")
+                    d.method != "k"
                 };
                 if step == 4 {
                     if let Some(d) = g.add.as_mut() {
@@ -366,11 +460,31 @@ fn handle_edit(
                     d.step += 1;
                 }
             }
+            InputTarget::PasswordPrompt(name) => {
+                let value = std::mem::take(&mut g.input);
+                if value.trim().is_empty() {
+                    g.error = Some("password can't be empty".into());
+                    return;
+                }
+                g.error = None;
+                g.secrets.insert(name.clone(), value.clone());
+                g.editing = false;
+                g.input_target = InputTarget::None;
+                g.secret = false;
+                drop(g);
+                let _ = action.send(Action::SeedSecret {
+                    name: name.clone(),
+                    password: value,
+                });
+                let _ = action.send(Action::Connect(name));
+            }
             InputTarget::None => {
                 g.editing = false;
             }
-        },
+        }
+    },
         KeyCode::Char(c) => {
+            g.error = None;
             g.input.push(c);
         }
         _ => {}
@@ -418,6 +532,18 @@ pub fn apply_event(state: &mut AppState, ev: UiEvent) {
                     .collect();
             }
         }
+        UiEvent::Removed { name } => {
+            state.machines.retain(|m| m.name != name);
+            if state.selected >= state.machines.len() && state.selected > 0 {
+                state.selected -= 1;
+            }
+        }
+        UiEvent::Cleared => {
+            state.machines.clear();
+            state.selected = 0;
+            state.confirm_wipe = false;
+            state.error = None;
+        }
     }
 }
 
@@ -425,7 +551,7 @@ pub fn ui(state: &AppState, f: &mut Frame) {
     let size: Rect = f.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(2)])
+        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(3)])
         .split(size);
 
     let tabs = Tabs::new(TAB_NAMES.iter().map(|s| Line::from(*s)).collect::<Vec<_>>())
@@ -441,7 +567,7 @@ pub fn ui(state: &AppState, f: &mut Frame) {
         Tab::Logs => logs::render(state, f, chunks[1]),
     }
 
-    // Bottom bar: input prompt when editing, otherwise contextual help.
+    // Bottom bar: input prompt (+ validation error) when editing, otherwise help.
     if state.editing {
         let (prompt, secret) = input_prompt(state);
         let shown: String = if secret {
@@ -449,12 +575,20 @@ pub fn ui(state: &AppState, f: &mut Frame) {
         } else {
             state.input.clone()
         };
-        let line = Line::from(vec![
+        let mut lines = vec![Line::from(vec![
             Span::styled("> ", Style::default().fg(Color::Yellow)),
             Span::raw(format!("{prompt} ")),
             Span::styled(shown, Style::default().fg(Color::White)),
-        ]);
-        let bar = Paragraph::new(line).block(
+        ])];
+        if let Some(err) = &state.error {
+            lines.push(
+                Line::from(vec![
+                    Span::styled("! ", Style::default().fg(Color::Red)),
+                    Span::styled(err.clone(), Style::default().fg(Color::Red)),
+                ]),
+            );
+        }
+        let bar = Paragraph::new(lines).block(
             Block::default()
                 .borders(Borders::TOP)
                 .border_style(Style::default().fg(Color::Yellow)),
@@ -542,5 +676,27 @@ mod tests {
             content.contains("New machine"),
             "add-machine prompt was not rendered: {content}"
         );
+    }
+
+    #[test]
+    fn empty_wizard_field_is_rejected() {
+        let state = Arc::new(Mutex::new(AppState::default()));
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Action>();
+        handle_global(
+            &state,
+            &tx,
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+        );
+        // Press Enter with empty input on the name step → must not advance,
+        // and an error should be surfaced.
+        handle_edit(
+            &state,
+            &Arc::new(Mutex::new(ClusterConfig::default())),
+            &tx,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+        );
+        let g = state.lock().unwrap();
+        assert_eq!(g.add.as_ref().unwrap().step, 0, "should stay on name step");
+        assert!(g.error.is_some(), "empty field should produce an error");
     }
 }

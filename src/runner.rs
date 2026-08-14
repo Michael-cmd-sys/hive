@@ -29,9 +29,9 @@ async fn collect_stats(session: &mut Session) -> anyhow::Result<MachineStats> {
     })
 }
 
-async fn spawn_machine(mc: MachineConfig, ui: Ui, poll_ms: u64) {
+async fn spawn_machine(mc: MachineConfig, ui: Ui, poll_ms: u64, password: Option<String>) {
     ui.send(UiEvent::Conn { name: mc.name.clone(), status: ConnStatus::Connecting }).ok();
-    let mut session = match Session::connect(&mc).await {
+    let mut session = match Session::connect(&mc, password.as_deref()).await {
         Ok(s) => s,
         Err(e) => {
             ui.send(UiEvent::Conn { name: mc.name.clone(), status: ConnStatus::Error(e.to_string()) }).ok();
@@ -66,11 +66,15 @@ pub async fn run_dispatcher(
     mut rx: tokio::sync::mpsc::UnboundedReceiver<Action>,
     ui: Ui,
     cfg: Arc<Mutex<ClusterConfig>>,
+    secrets: Arc<Mutex<HashMap<String, String>>>,
 ) {
     let mut handles: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
     while let Some(action) = rx.recv().await {
         match action {
             Action::Quit => break,
+            Action::SeedSecret { name, password } => {
+                secrets.lock().unwrap().insert(name, password);
+            }
             Action::ConnectAll | Action::Connect(_) => {
                 let poll = cfg.lock().unwrap().poll_interval_ms;
                 let machines: Vec<MachineConfig> = cfg.lock().unwrap().machines.clone();
@@ -81,12 +85,17 @@ pub async fn run_dispatcher(
                     };
                     if need {
                         let ui2 = ui.clone();
+                        let secrets2 = secrets.clone();
                         let name = mc.name.clone();
                         if let Some(old) = handles.get(&name) {
                             old.abort();
                         }
-                        let h = tokio::spawn(async move { spawn_machine(mc, ui2, poll).await });
-                        handles.insert(name, h);
+                        let handle_name = name.clone();
+                        let h = tokio::spawn(async move {
+                            let pw = secrets2.lock().unwrap().get(&name).cloned();
+                            spawn_machine(mc, ui2, poll, pw).await
+                        });
+                        handles.insert(handle_name, h);
                     }
                 }
             }
@@ -95,6 +104,40 @@ pub async fn run_dispatcher(
                     h.abort();
                 }
                 ui.send(UiEvent::Conn { name: name.clone(), status: ConnStatus::Disconnected }).ok();
+            }
+            Action::RemoveMachine(name) => {
+                if let Some(h) = handles.remove(&name) {
+                    h.abort();
+                }
+                secrets.lock().unwrap().remove(&name);
+                {
+                    let mut guard = cfg.lock().unwrap();
+                    guard.machines.retain(|m| m.name != name);
+                    let path = std::env::var("HIVE_CONFIG").unwrap_or_else(|_| "cluster.yaml".into());
+                    if let Err(e) = guard.save(std::path::Path::new(&path)) {
+                        ui.send(UiEvent::Log(format!("save failed: {e}"))).ok();
+                    } else {
+                        ui.send(UiEvent::Log(format!("{name} removed and saved"))).ok();
+                    }
+                }
+                ui.send(UiEvent::Removed { name }).ok();
+            }
+            Action::ClearAll => {
+                for (_, h) in handles.drain() {
+                    h.abort();
+                }
+                secrets.lock().unwrap().clear();
+                {
+                    let mut guard = cfg.lock().unwrap();
+                    guard.machines.clear();
+                    let path = std::env::var("HIVE_CONFIG").unwrap_or_else(|_| "cluster.yaml".into());
+                    if let Err(e) = guard.save(std::path::Path::new(&path)) {
+                        ui.send(UiEvent::Log(format!("save failed: {e}"))).ok();
+                    } else {
+                        ui.send(UiEvent::Log("all machines wiped".into())).ok();
+                    }
+                }
+                ui.send(UiEvent::Cleared).ok();
             }
             Action::SaveConfig => {
                 let path = std::env::var("HIVE_CONFIG").unwrap_or_else(|_| "cluster.yaml".into());
@@ -109,7 +152,8 @@ pub async fn run_dispatcher(
                 let machines: Vec<MachineConfig> = cfg.lock().unwrap().machines.clone();
                 for name in targets {
                     if let Some(mc) = machines.iter().find(|m| m.name == name) {
-                        match Session::connect(mc).await {
+                        let pw = secrets.lock().unwrap().get(&name).cloned();
+                        match Session::connect(mc, pw.as_deref()).await {
                             Ok(mut s) => match run_on(&mut s, &cmd).await {
                                 Ok(out) => ui.send(UiEvent::RunOutput { name, out }).ok(),
                                 Err(e) => ui.send(UiEvent::Log(format!("{name}: {e}"))).ok(),
@@ -125,7 +169,8 @@ pub async fn run_dispatcher(
                     Some(c) => c.clone(),
                     None => { ui.send(UiEvent::Log(format!("head {head} not found"))).ok(); continue; }
                 };
-                match Session::connect(&head_cfg).await {
+                let pw = secrets.lock().unwrap().get(&head).cloned();
+                match Session::connect(&head_cfg, pw.as_deref()).await {
                     Ok(mut s) => {
                         let ws: Vec<Worker> = workers.iter().filter_map(|n| {
                             machines.iter().find(|m| &m.name == n).map(|m| Worker {

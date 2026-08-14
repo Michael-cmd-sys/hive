@@ -15,6 +15,8 @@ pub struct MachineView {
     pub host: String,
     pub status: ConnStatus,
     pub tags: Vec<String>,
+    /// "password" or "key" — so the UI knows whether a secret must be supplied.
+    pub auth_method: String,
 }
 
 #[derive(Debug, Clone)]
@@ -35,11 +37,26 @@ pub struct LogEntry {
 /// Messages flowing INTO the TUI from background tasks.
 #[derive(Debug, Clone)]
 pub enum UiEvent {
-    Conn { name: String, status: ConnStatus },
-    Stats { name: String, stats: MachineStats },
+    Conn {
+        name: String,
+        status: ConnStatus,
+    },
+    Stats {
+        name: String,
+        stats: MachineStats,
+    },
     Log(String),
-    RunOutput { name: String, out: String },
+    RunOutput {
+        name: String,
+        out: String,
+    },
     MpiOutput(String),
+    /// A machine was removed (e.g. via the UI); drop it from the list.
+    Removed {
+        name: String,
+    },
+    /// All machines were wiped (nuclear option); clear the list.
+    Cleared,
 }
 
 /// Actions flowing OUT OF the TUI to the dispatcher task.
@@ -48,6 +65,15 @@ pub enum Action {
     Connect(String),
     ConnectAll,
     Disconnect(String),
+    /// Remove a single machine from the config and disconnect it.
+    RemoveMachine(String),
+    /// Wipe every machine from the config (`cluster.yaml`) and disconnect all.
+    ClearAll,
+    /// Push an in-memory password for `name` (never persisted to disk).
+    SeedSecret {
+        name: String,
+        password: String,
+    },
     SaveConfig,
     Run {
         targets: Vec<String>,
@@ -70,6 +96,8 @@ pub enum InputTarget {
     RunCommand,
     MpiCommand,
     AddField,
+    /// Prompting for a password to connect to `String` (machine name).
+    PasswordPrompt(String),
 }
 
 /// Partial fields collected while adding a machine via the TUI wizard.
@@ -100,6 +128,12 @@ pub struct AppState {
     pub secret: bool,
     pub add: Option<AddDraft>,
     pub selected: usize,
+    /// In-memory passwords keyed by machine name. NEVER written to disk.
+    pub secrets: HashMap<String, String>,
+    /// Transient validation/error message shown in the bottom bar.
+    pub error: Option<String>,
+    /// When true the next 'y'/'n' confirms or cancels a nuclear wipe.
+    pub confirm_wipe: bool,
 }
 
 impl Default for AppState {
@@ -119,6 +153,9 @@ impl Default for AppState {
             secret: false,
             add: None,
             selected: 0,
+            secrets: HashMap::new(),
+            error: None,
+            confirm_wipe: false,
         }
     }
 }

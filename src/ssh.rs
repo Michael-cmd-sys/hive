@@ -37,17 +37,25 @@ pub struct Session {
 }
 
 impl Session {
-    /// Connect to `cfg`'s machine, authenticating with a password or a key.
-    pub async fn connect(cfg: &MachineConfig) -> Result<Self> {
+    /// Connect to `cfg`'s machine, authenticating with a key or, for password
+    /// auth, with `password` (which is sourced from the in-memory secrets
+    /// store — never from disk).
+    pub async fn connect(cfg: &MachineConfig, password: Option<&str>) -> Result<Self> {
         let config = Arc::new(russh::client::Config::default());
         let mut handle = client::connect(config, (cfg.host.as_str(), cfg.port), Client)
             .await
             .map_err(HiveError::Ssh)?;
 
         let auth_result = match &cfg.auth {
-            Auth::Password { password } => {
+            Auth::Password => {
+                let pw = password.ok_or_else(|| {
+                    HiveError::Auth(format!(
+                        "{}: password required (not stored on disk) — re-add or connect to be prompted",
+                        cfg.name
+                    ))
+                })?;
                 handle
-                    .authenticate_password(&cfg.user, password.clone())
+                    .authenticate_password(&cfg.user, pw.to_string())
                     .await
                     .map_err(HiveError::Ssh)?
             }
