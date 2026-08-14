@@ -2,11 +2,21 @@ use crate::error::HiveError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "lowercase")]
 pub enum Auth {
     Password { password: String },
     Key { key_path: String },
+}
+
+// Redacting Debug so secrets never leak into logs / {:?} output.
+impl std::fmt::Debug for Auth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Auth::Password { .. } => f.write_str("Password { password: \"<redacted>\" }"),
+            Auth::Key { key_path } => f.debug_struct("Key").field("key_path", key_path).finish(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
