@@ -54,6 +54,8 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Stop tracking generated files
+- Update CHANGELOG [skip ci]
+- Add Makefile with dx serve/build convenience targets
 
 ### Ux
 
