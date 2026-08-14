@@ -23,9 +23,11 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - Delete/wipe machines, input validation, in-memory passwords, HIVE banner
 - Vim + arrow-key navigation (h/l tabs, j/k list, ←/→ tabs)
 - Launch splash screen with the HIVE banner
+- Visible run/MPI scope toggle (t) — all nodes or selected machine
 
 ### Miscellaneous
 
+- Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
