@@ -41,3 +41,21 @@ machines:
     let r: Result<ClusterConfig, _> = serde_yaml::from_str(yaml);
     assert!(r.is_err());
 }
+
+#[test]
+fn rejects_empty_password_via_load() {
+    let yaml = r#"
+machines:
+  - name: n
+    host: h
+    user: u
+    auth:
+      method: password
+      password: ""
+"#;
+    let path = std::env::temp_dir().join(format!("hive_cfg_test_{}.yaml", std::process::id()));
+    std::fs::write(&path, yaml).expect("write temp yaml");
+    let r = ClusterConfig::load(&path);
+    let _ = std::fs::remove_file(&path);
+    assert!(r.is_err());
+}

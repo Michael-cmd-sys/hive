@@ -24,7 +24,7 @@ fn default_port() -> u16 {
     22
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MpiConfig {
     #[serde(default = "default_launcher")]
     pub launcher: String,
@@ -35,7 +35,7 @@ fn default_launcher() -> String {
     "mpirun".into()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClusterConfig {
     #[serde(default = "default_poll")]
     pub poll_interval_ms: u64,
@@ -46,6 +46,38 @@ pub struct ClusterConfig {
 }
 fn default_poll() -> u64 {
     2000
+}
+
+impl Default for MachineConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            host: String::new(),
+            port: default_port(),
+            user: String::new(),
+            auth: Auth::Password {
+                password: String::new(),
+            },
+            tags: Vec::new(),
+        }
+    }
+}
+impl Default for MpiConfig {
+    fn default() -> Self {
+        Self {
+            launcher: default_launcher(),
+            default_args: String::new(),
+        }
+    }
+}
+impl Default for ClusterConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval_ms: default_poll(),
+            mpi: MpiConfig::default(),
+            machines: Vec::new(),
+        }
+    }
 }
 
 impl ClusterConfig {
@@ -65,7 +97,11 @@ impl ClusterConfig {
         let text = serde_yaml::to_string(self)
             .map_err(|e| HiveError::Config(format!("serialize: {e}")))?;
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).ok();
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    HiveError::Config(format!("create dir {}: {e}", parent.display()))
+                })?;
+            }
         }
         std::fs::write(path, text)
             .map_err(|e| HiveError::Config(format!("write {}: {e}", path.display())))?;
