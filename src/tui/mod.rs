@@ -425,7 +425,7 @@ pub fn ui(state: &AppState, f: &mut Frame) {
     let size: Rect = f.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(2)])
         .split(size);
 
     let tabs = Tabs::new(TAB_NAMES.iter().map(|s| Line::from(*s)).collect::<Vec<_>>())
@@ -465,5 +465,82 @@ pub fn ui(state: &AppState, f: &mut Frame) {
             .style(Style::default().fg(Color::DarkGray))
             .block(Block::default().borders(Borders::TOP));
         f.render_widget(bar, chunks[2]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyModifiers};
+
+    #[test]
+    fn pressing_a_opens_add_machine_wizard() {
+        let state = Arc::new(Mutex::new(AppState::default()));
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Action>();
+        // Default tab is Machines, so 'a' must start the wizard.
+        assert!(matches!(state.lock().unwrap().tab, Tab::Machines));
+        handle_global(
+            &state,
+            &tx,
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+        );
+        let g = state.lock().unwrap();
+        assert!(g.editing, "'a' should enter editing mode");
+        assert_eq!(g.input_target, InputTarget::AddField);
+        assert!(g.add.is_some());
+    }
+
+    #[test]
+    fn typing_in_wizard_builds_machine_name() {
+        let state = Arc::new(Mutex::new(AppState::default()));
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Action>();
+        handle_global(
+            &state,
+            &tx,
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+        );
+        // type "node1" then Enter advances to step 1 (host)
+        for ch in ['n', 'o', 'd', 'e', '1'] {
+            handle_edit(
+                &state,
+                &Arc::new(Mutex::new(ClusterConfig::default())),
+                &tx,
+                KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE),
+            );
+        }
+        handle_edit(
+            &state,
+            &Arc::new(Mutex::new(ClusterConfig::default())),
+            &tx,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+        );
+        let g = state.lock().unwrap();
+        assert_eq!(g.add.as_ref().unwrap().name, "node1");
+        assert_eq!(g.add.as_ref().unwrap().step, 1);
+    }
+
+    #[test]
+    fn add_wizard_prompt_renders_on_screen() {
+        use ratatui::backend::TestBackend;
+        let state = AppState {
+            editing: true,
+            input_target: InputTarget::AddField,
+            add: Some(AddDraft::default()),
+            ..Default::default()
+        };
+        let backend = TestBackend::new(80, 24);
+        let mut term = ratatui::Terminal::new(backend).unwrap();
+        term.draw(|f| ui(&state, f)).unwrap();
+        let content: String = term
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            content.contains("New machine"),
+            "add-machine prompt was not rendered: {content}"
+        );
     }
 }
