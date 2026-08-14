@@ -38,3 +38,29 @@ pub fn render(f: &mut Frame, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title("hive"));
     f.render_widget(p, area);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    #[test]
+    fn banner_renders_wordmark() {
+        let backend = TestBackend::new(80, 24);
+        let mut term = Terminal::new(backend).unwrap();
+        let area = ratatui::layout::Rect::new(0, 0, 80, 24);
+        term.draw(|f| render(f, area)).unwrap();
+        let content: String = term
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            content.contains("ssh cluster orchestration"),
+            "banner was not rendered: {content}"
+        );
+    }
+}

@@ -60,6 +60,25 @@ fn prev_tab(tab: Tab) -> Tab {
     }
 }
 
+/// Brief launch splash showing the HIVE banner. Auto-dismisses after ~1.6s or
+/// as soon as any key is pressed.
+fn show_splash(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+    use std::time::Instant;
+    let deadline = Instant::now() + Duration::from_millis(1600);
+    loop {
+        terminal.draw(|f| banner::render(f, f.area()))?;
+        if Instant::now() >= deadline {
+            break;
+        }
+        if event::poll(Duration::from_millis(120)).unwrap_or(false) {
+            if let Ok(Event::Key(_)) = event::read() {
+                break;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Prompt text + whether the input should be masked, for the current input target.
 fn input_prompt(state: &AppState) -> (String, bool) {
     match &state.input_target {
@@ -143,6 +162,10 @@ pub fn run(
             });
         }
 
+        let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
+        // Splash: show the banner briefly (or until a key is pressed).
+        show_splash(&mut terminal)?;
+
         let key_state = state.clone();
         let key_action = action_tx.clone();
         let key_cfg = cfg.clone();
@@ -166,7 +189,6 @@ pub fn run(
             }
         });
 
-        let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
         loop {
             while let Ok(ev) = ui_rx.try_recv() {
                 if let Ok(mut g) = state.lock() {
