@@ -21,9 +21,11 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - Add hive ASCII banner on Machines (landing) tab
 - Delete/wipe machines, input validation, in-memory passwords, HIVE banner
 - Vim + arrow-key navigation (h/l tabs, j/k list, ←/→ tabs)
+- Launch splash screen with the HIVE banner
 
 ### Miscellaneous
 
+- Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
