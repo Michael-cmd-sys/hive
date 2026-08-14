@@ -1,0 +1,39 @@
+name: changelog
+
+# Regenerates CHANGELOG.md from Conventional Commits on every push to main.
+# The auto-commit uses [skip ci] so it does not re-trigger CI.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate CHANGELOG.md
+        uses: git-cliff/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --verbose
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet CHANGELOG.md; then
+            echo "changelog unchanged"
+            exit 0
+          fi
+          git add CHANGELOG.md
+          git commit -m "chore: update CHANGELOG [skip ci]"
+          git push

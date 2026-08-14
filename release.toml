@@ -1,0 +1,17 @@
+# cargo-release configuration.
+# Bump + tag + push with: `cargo release <patch|minor|major> --execute`
+# See https://github.com/crate-ci/cargo-release
+
+[package]
+# Tag pushed as vX.Y.Z (matches git-cliff tag_pattern and the release workflow).
+tag = "v{{version}}"
+tag-name = "v{{version}}"
+
+[changelog]
+# Regenerate CHANGELOG.md from Conventional Commits before tagging.
+generate = true
+prepend = true
+
+[release]
+# Publish to crates.io is intentionally disabled (this is a binary/CLI app, not a lib).
+publish = false
