@@ -32,6 +32,8 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - Visible run/MPI scope toggle (t) — all nodes or selected machine
 - Monitor gauges + per-node process breakdown
 - Add Dioxus landing site + GitHub Pages deploy workflow
+- *(tui)* Show per-core CPU load via /proc/stat
+- *(site)* Rewrite landing page in Tailwind and fix Pages deploy
 
 ### Miscellaneous
 
@@ -49,6 +51,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - *(site)* Upgrade Dioxus 0.6 -> 0.7 (current stable)
+- Update CHANGELOG [skip ci]
 
 ### Ux
 
