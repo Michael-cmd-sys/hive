@@ -10,6 +10,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - *(ci)* Install zig via mlugg/setup-zig instead of apt
 - *(ci)* Changelog workflow must stage new CHANGELOG.md before diffing
 - *(ui)* Give bottom bar 2 rows so input/help text renders
+- *(ui)* Vertically center the HIVE banner on the splash screen
 
 ### CI
 
@@ -25,6 +26,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 
 ### Miscellaneous
 
+- Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
