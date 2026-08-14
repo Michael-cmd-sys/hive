@@ -47,6 +47,8 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
+- Update CHANGELOG [skip ci]
+- *(site)* Upgrade Dioxus 0.6 -> 0.7 (current stable)
 
 ### Ux
 
