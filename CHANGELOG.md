@@ -18,6 +18,10 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - Add git-cliff + cargo-release versioning and cross-platform release workflow
 - Force bash shell for artifact staging step (windows runner defaults to pwsh)
 
+### Documentation
+
+- Link live landing page in README + fix stray char
+
 ### Features
 
 - Add hive ASCII banner on Machines (landing) tab
@@ -30,6 +34,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 
 ### Miscellaneous
 
+- Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
