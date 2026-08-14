@@ -66,7 +66,15 @@ fn show_splash(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Res
     use std::time::Instant;
     let deadline = Instant::now() + Duration::from_millis(1600);
     loop {
-        terminal.draw(|f| banner::render(f, f.area()))?;
+        terminal.draw(|f| {
+            let constraints: [Constraint; 3] = [
+                Constraint::Min(0),
+                Constraint::Length(9),
+                Constraint::Min(0),
+            ];
+            let chunks = Layout::vertical(constraints).split(f.area());
+            banner::render(f, chunks[1]);
+        })?;
         if Instant::now() >= deadline {
             break;
         }
