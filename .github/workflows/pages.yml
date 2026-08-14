@@ -27,16 +27,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --locked
+        run: cargo install dioxus-cli --version 0.7.10 --locked
 
       - name: Build site
         working-directory: site
-        run: dx build --release --base-path /hive/
+        run: dx build --release --debug-symbols=false --base-path /hive/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site/target/dx/hive-site/release/web/public
+          path: site/target/dx/site/release/web/public
 
   deploy:
     needs: build

@@ -1,13 +1,19 @@
 [package]
-name = "hive-site"
+name = "site"
 version = "0.1.0"
+authors = ["Michael Kofi Awuni <michaelawunikofi@gmail.com>"]
 edition = "2021"
-description = "Project website for hive — SSH cluster orchestration for the swarm"
-license = "MIT"
 
-[[bin]]
-name = "hive-site"
-path = "src/main.rs"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dioxus = { version = "0.7", features = ["web"] }
+dioxus = { version = "0.7.10", features = [] }
+
+[features]
+default = ["web"]
+# The feature that are only required for the web = ["dioxus/web"] build target should be optional and only enabled in the web = ["dioxus/web"] feature
+web = ["dioxus/web"]
+# The feature that are only required for the desktop = ["dioxus/desktop"] build target should be optional and only enabled in the desktop = ["dioxus/desktop"] feature
+desktop = ["dioxus/desktop"]
+# The feature that are only required for the mobile = ["dioxus/mobile"] build target should be optional and only enabled in the mobile = ["dioxus/mobile"] feature
+mobile = ["dioxus/mobile"]

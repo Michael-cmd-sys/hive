@@ -1,0 +1,14 @@
+[application]
+
+[web]
+base_path = "/hive/"
+
+[web.app]
+title = "hive — cluster orchestration for the swarm"
+
+[web.resource]
+style = []
+script = []
+
+[web.resource.dev]
+script = []

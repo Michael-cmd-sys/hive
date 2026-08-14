@@ -1,100 +1,73 @@
 use dioxus::prelude::*;
 
-const CSS: &str = r#"
-:root {
-  color-scheme: dark;
-  --bg: #04070a;
-  --panel: #07120f;
-  --grid: #0c2a20;
-  --fg: #6cffb0;
-  --fg-dim: #2f6b52;
-  --amber: #ffb000;
-  --red: #ff5c5c;
-  --line: #12463a;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
-body {
-  background: var(--bg);
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 28px 28px;
-  color: var(--fg);
-  font-family: "IBM Plex Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 15px;
-  line-height: 1.55;
-}
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0,0,0,0) 0px,
-    rgba(0,0,0,0) 2px,
-    rgba(0,0,0,0.18) 3px,
-    rgba(0,0,0,0.18) 4px
-  );
-  z-index: 9999;
-}
-.wrap { max-width: 920px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; position: relative; }
-.glow { text-shadow: 0 0 6px rgba(108,255,176,0.55), 0 0 18px rgba(108,255,176,0.25); }
-a { color: var(--amber); text-decoration: none; border-bottom: 1px dotted var(--amber); }
-a:hover { background: rgba(255,176,0,0.12); }
+// Static telemetry snapshot — per-core CPU load per node (0-100%).
+// Used to demonstrate the live Monitor view on the landing page.
+const NODES: &[(&str, &[u8], u8, &str)] = &[
+    ("node-00", &[38, 42, 51, 40, 30, 45, 39, 44], 60, "OK"),
+    ("node-01", &[70, 65, 80, 60, 72, 68, 55, 77], 72, "OK"),
+    ("node-02", &[92, 88, 95, 85, 90, 99, 84, 91], 91, "HOT"),
+    ("node-03", &[48, 52, 47, 55, 49, 51, 53, 50], 40, "OK"),
+    ("node-04", &[5, 8, 3, 12, 6, 9, 4, 10], 12, "IDLE"),
+    ("node-05", &[73, 68, 80, 71, 75, 69, 77, 72], 80, "OK"),
+    ("node-06", &[95, 90, 99, 93, 96, 88, 97, 94], 96, "HOT"),
+    ("node-07", &[28, 33, 25, 30, 35, 27, 31, 29], 35, "OK"),
+];
 
-.hero { border: 1px solid var(--line); background: var(--panel); padding: 2rem 1.5rem; position: relative; }
-.hero::before {
-  content: "SYSTEM // hive"; position: absolute; top: -0.7rem; left: 1rem;
-  background: var(--bg); padding: 0 0.5rem; color: var(--fg-dim); font-size: 12px; letter-spacing: 2px;
-}
-.wordmark {
-  font-size: clamp(3rem, 12vw, 6rem); font-weight: 700; letter-spacing: 0.15em;
-  margin: 0; line-height: 1; color: var(--fg); text-transform: lowercase;
-}
-.backronym { color: var(--amber); letter-spacing: 3px; font-size: 0.85rem; margin: 0.4rem 0 0; }
-.tag { color: var(--fg-dim); margin: 0.8rem 0 0; }
-.cursor { display: inline-block; width: 0.6em; height: 1.05em; background: var(--fg); margin-left: 2px; vertical-align: -0.18em; animation: blink 1.1s steps(1) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
+const BENEFITS: &[(&str, &str)] = &[
+    (
+        "Per-core visibility",
+        "Node averages hide the truth. hive shows load on every individual core, so you can see exactly which ones are saturated — and which are sitting idle.",
+    ),
+    (
+        "Fleet-wide commands",
+        "Type a command once and run it on every node. Output streams back into a single view — no SSH loops, no copy-paste, no scripts to maintain.",
+    ),
+    (
+        "Zero agents",
+        "Nothing to deploy on your nodes. hive uses the SSH and shell already there. If you can ssh in, hive can manage it.",
+    ),
+    (
+        "Secure by default",
+        "Connection passwords live only in memory for the life of the session and are never written to disk.",
+    ),
+];
 
-.tele { margin-top: 2.5rem; }
-.tele h2, .sec h2 { font-size: 0.8rem; letter-spacing: 3px; color: var(--fg-dim); text-transform: uppercase; border-bottom: 1px solid var(--line); padding-bottom: 0.35rem; margin: 0 0 0.9rem; }
-.nodes { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.6rem; }
-.node { border: 1px solid var(--line); padding: 0.55rem 0.6rem; background: #06100d; font-size: 0.78rem; }
-.node .id { color: var(--fg); }
-.node .bar { height: 6px; background: #0a1b16; margin: 0.4rem 0 0.3rem; border: 1px solid var(--line); }
-.node .bar > i { display: block; height: 100%; background: var(--fg); }
-.node .bar > i.warn { background: var(--amber); }
-.node .bar > i.hot { background: var(--red); }
-.node .meta { color: var(--fg-dim); }
+const STEPS: &[(&str, &str)] = &[
+    (
+        "01 / Describe your cluster",
+        "Add machines interactively — name, host, SSH user, and a password or key — or drop a cluster.yaml beside the binary. No hand-editing of config required.",
+    ),
+    (
+        "02 / Connect and watch",
+        "Press c to connect everything. Per-node CPU, RAM, and load average update live, every two seconds.",
+    ),
+    (
+        "03 / Command or dispatch",
+        "Run a shell command across the fleet, or launch an MPI job with an auto-generated hostfile and per-node process counts.",
+    ),
+];
 
-.sec { margin-top: 2.5rem; }
-.spec { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
-.spec td { border: 1px solid var(--line); padding: 0.5rem 0.7rem; vertical-align: top; }
-.spec td:first-child { color: var(--amber); white-space: nowrap; width: 1%; }
-.spec td:last-child { color: var(--fg); }
-
-pre, .term {
-  background: #020503; border: 1px solid var(--line); padding: 0.9rem 1rem;
-  overflow-x: auto; color: var(--fg); font-size: 0.85rem; margin: 0;
-}
-.prompt { color: var(--amber); }
-.cmt { color: var(--fg-dim); }
-
-footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: 1rem; color: var(--fg-dim); font-size: 0.8rem; display: flex; gap: 1.2rem; flex-wrap: wrap; }
-"#;
-
-// Static telemetry snapshot — evokes an HPC cluster dashboard.
-const NODES: &[(&str, u8, &str)] = &[
-    ("node-00", 42, "OK"),
-    ("node-01", 67, "OK"),
-    ("node-02", 88, "HOT"),
-    ("node-03", 51, "OK"),
-    ("node-04", 12, "IDLE"),
-    ("node-05", 73, "OK"),
-    ("node-06", 95, "HOT"),
-    ("node-07", 30, "OK"),
+const SPECS: &[(&str, &str)] = &[
+    (
+        "Transport",
+        "Authenticated SSH via libssh2. Passwords are captured at runtime, held in memory, and never persisted to disk.",
+    ),
+    (
+        "Dispatch",
+        "Ad-hoc shell across all or selected nodes; MPI jobs launched with mpirun using an auto-generated hostfile.",
+    ),
+    (
+        "Telemetry",
+        "Per-node CPU — broken down per core — plus RAM and load average, sampled every 2 seconds.",
+    ),
+    (
+        "Interface",
+        "A fast terminal UI (ratatui) with tabbed Machines, Monitor, Run, and MPI views.",
+    ),
+    (
+        "Packaging",
+        "Written in Rust; cross-compiled release binaries for Linux, macOS, and Windows.",
+    ),
 ];
 
 fn main() {
@@ -103,33 +76,72 @@ fn main() {
 
 fn app() -> Element {
     rsx! {
-        style { dangerous_inner_html: "{CSS}" }
-        div { class: "wrap",
-            section { class: "hero",
-                h1 { class: "wordmark glow", "hive" }
-                p { class: "backronym", "HETEROGENEOUS INTERCONNECTED VECTOR ENGINE" }
-                p { class: "tag",
-                    "cluster orchestration suite // ssh · mpi · telemetry"
-                    span { class: "cursor" }
+        document::Stylesheet { href: asset!("/assets/tailwind.css") }
+        div { class: "max-w-[960px] mx-auto px-5 py-12 relative",
+
+            // ── Hero ───────────────────────────────────────────────
+            section { class: "relative border border-line bg-panel px-6 py-10 sm:px-10",
+                span { class: "absolute -top-3 left-5 bg-bg px-2 text-xs tracking-[0.2em] text-fg-dim",
+                    "SYSTEM // hive"
+                }
+                h1 { class: "glow text-fg font-bold text-[clamp(2rem,6vw,3.4rem)] leading-tight tracking-tight m-0",
+                    "Command your whole cluster from one terminal."
+                }
+                p { class: "text-fg-dim mt-4 max-w-[60ch] text-[15px] leading-relaxed",
+                    "hive is keyboard-driven SSH orchestration for labs and HPC clusters. See live per-core load on every node, run one command across the fleet, and launch MPI jobs — without installing anything on the machines you manage."
+                }
+                div { class: "mt-7 flex flex-wrap gap-3",
+                    a { class: "inline-block border border-amber text-amber px-5 py-2 text-sm font-bold tracking-wide hover:bg-amber/10 transition-colors",
+                        href: "#install", "Install hive" }
+                    a { class: "inline-block border border-line text-fg px-5 py-2 text-sm tracking-wide hover:bg-fg/5 transition-colors",
+                        href: "https://github.com/Michael-cmd-sys/hive", "View source on GitHub" }
                 }
             }
 
-            section { class: "tele",
-                h2 { "live cluster telemetry" }
-                div { class: "nodes",
-                    for (id, load, state) in NODES {
+            // ── Why ────────────────────────────────────────────────
+            section { class: "mt-16",
+                h2 { class: "text-sm tracking-[3px] uppercase text-fg-dim border-b border-line pb-2 mb-6",
+                    "Why operators choose hive" }
+                div { class: "grid gap-4 sm:grid-cols-2",
+                    for (title, body) in BENEFITS {
+                        div { class: "border border-line bg-[#06100d] p-5",
+                            h3 { class: "text-fg font-bold text-base m-0", "{title}" }
+                            p { class: "text-fg-dim mt-2 text-sm leading-relaxed", "{body}" }
+                        }
+                    }
+                }
+            }
+
+            // ── Live demo ──────────────────────────────────────────
+            section { class: "mt-16",
+                h2 { class: "text-sm tracking-[3px] uppercase text-fg-dim border-b border-line pb-2 mb-4",
+                    "Live cluster telemetry" }
+                p { class: "text-fg-dim text-sm mb-5 max-w-[65ch] leading-relaxed",
+                    "A snapshot of the Monitor tab: every core of every node, color-coded by load. Green is healthy, amber is busy, red is hot — so a single saturated core is impossible to miss."
+                }
+                div { class: "grid gap-3 grid-cols-[repeat(auto-fill,minmax(160px,1fr))]",
+                    for (id, cores, _ram, state) in NODES {
                         {
-                            let cls = if *load >= 85 { "hot" } else if *load >= 70 { "warn" } else { "" };
+                            let avg = cores.iter().map(|c| *c as u32).sum::<u32>() / cores.len() as u32;
                             rsx! {
-                                div { class: "node",
-                                    div { class: "id", "{id}" }
-                                    div { class: "bar",
-                                        i {
-                                            class: "{cls}",
-                                            style: "width: {load}%",
+                                div { class: "border border-line bg-[#06100d] p-3 text-xs",
+                                    div { class: "flex justify-between items-baseline",
+                                        span { class: "text-fg", "{id}" }
+                                        span { class: "text-fg-dim", "{cores.len()}c" }
+                                    }
+                                    div { class: "flex items-end gap-[2px] h-12 mt-2",
+                                        for load in cores {
+                                            {
+                                                let bar_cls = if *load >= 85 { "bg-red" } else if *load >= 70 { "bg-amber" } else { "bg-fg" };
+                                                rsx! {
+                                                    div { class: "flex-1 h-full bg-[#0a1b16] border border-line flex items-end",
+                                                        div { class: "w-full {bar_cls}", style: "height: {load}%" }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
-                                    div { class: "meta", "load {load}% · {state}" }
+                                    div { class: "text-fg-dim mt-2", "avg {avg}% cpu · {state}" }
                                 }
                             }
                         }
@@ -137,47 +149,81 @@ fn app() -> Element {
                 }
             }
 
-            section { class: "sec",
-                h2 { "specifications" }
-                table { class: "spec",
-                    tbody {
-                        tr { td { "TRANSPORT" } td { "libssh2 over authenticated SSH; passwords captured at runtime, held in memory, never persisted to disk" } }
-                        tr { td { "DISPATCH" } td { "ad-hoc shell across all or selected nodes; MPI jobs via mpirun with hostfile + per-node process count" } }
-                        tr { td { "TELEMETRY" } td { "per-node CPU / RAM gauges, load average, and top processes sampled every 2s" } }
-                        tr { td { "UI" } td { "ratatui TUI — tabbed Machines / Monitor / Run / MPI; c connect-all, s save, q quit" } }
-                        tr { td { "BUILD" } td { "cargo workspace; cross-platform release binaries via cargo-release + git-cliff" } }
+            // ── How ────────────────────────────────────────────────
+            section { class: "mt-16",
+                h2 { class: "text-sm tracking-[3px] uppercase text-fg-dim border-b border-line pb-2 mb-6",
+                    "Up and running in three steps" }
+                div { class: "space-y-4",
+                    for (title, body) in STEPS {
+                        div { class: "border-l-2 border-amber pl-4",
+                            h3 { class: "text-fg font-bold text-base m-0", "{title}" }
+                            p { class: "text-fg-dim mt-1 text-sm leading-relaxed max-w-[70ch]", "{body}" }
+                        }
                     }
                 }
             }
 
-            section { class: "sec",
-                h2 { "install" }
-                pre {
-                    span { class: "prompt", "$ " }
-                    "cargo install --path .\n"
-                    span { class: "cmt", "# or pull a prebuilt binary from releases (rolling or vX.Y.Z)" }
+            // ── Install ────────────────────────────────────────────
+            section { class: "mt-16", id: "install",
+                h2 { class: "text-sm tracking-[3px] uppercase text-fg-dim border-b border-line pb-2 mb-5",
+                    "Get hive" }
+                p { class: "text-fg-dim text-sm leading-relaxed max-w-[70ch]",
+                    "hive ships as a single, self-contained binary. The quickest way to install it is with Cargo, Rust's package manager. First grab the source, move into the project folder, then build and install:"
+                }
+                pre { class: "bg-[#020503] border border-line p-4 mt-3 overflow-x-auto text-sm text-fg m-0",
+                    span { class: "text-amber", "$ " }
+                    "git clone https://github.com/Michael-cmd-sys/hive\n"
+                    span { class: "text-amber", "$ " }
+                    "cd hive\n"
+                    span { class: "text-amber", "$ " }
+                    "cargo install --path ."
+                }
+                p { class: "text-fg-dim text-sm leading-relaxed max-w-[70ch] mt-4",
+                    "The "
+                    code { class: "text-fg border border-line px-1", "git clone" }
+                    " step downloads the project; "
+                    code { class: "text-fg border border-line px-1", "cd hive" }
+                    " moves you into it; and "
+                    code { class: "text-fg border border-line px-1", "cargo install --path ." }
+                    " compiles hive from that local source and adds the "
+                    code { class: "text-fg border border-line px-1", "hive" }
+                    " command to your terminal's PATH. You will need Git, Rust (Cargo), and SSH access to the machines you want to manage."
+                }
+                p { class: "text-fg-dim text-sm leading-relaxed max-w-[70ch] mt-4",
+                    "No Rust toolchain? Download a prebuilt binary for Linux, macOS, or Windows from the "
+                    a { class: "text-amber border-b border-dashed border-amber hover:bg-amber/10",
+                        href: "https://github.com/Michael-cmd-sys/hive/releases", "Releases page" }
+                    " — nothing to compile."
+                }
+                p { class: "text-fg-dim text-sm leading-relaxed max-w-[70ch] mt-4",
+                    "Then just run "
+                    code { class: "text-fg border border-line px-1", "hive" }
+                    ". Press "
+                    span { class: "text-fg border border-line px-1", "c" }
+                    " to connect your cluster and you are monitoring in seconds."
                 }
             }
 
-            section { class: "sec",
-                h2 { "usage" }
-                pre {
-                    span { class: "cmt", "# global" }
-                    "\nTab / ←→ / h l   switch tabs\n"
-                    "c                 connect all nodes\ns                 save machines.json\nq                 quit\n\n"
-                    span { class: "cmt", "# machines" }
-                    "\na                 add node\nd                 delete\nD                 wipe all\n"
-                    "Enter             connect\nj / k             select\n\n"
-                    span { class: "cmt", "# run / mpi" }
-                    "\nEnter             type command\nt                 target: all | selected\n"
-                    "r / m             quick run / mpi dispatch"
+            // ── Under the hood ─────────────────────────────────────
+            section { class: "mt-16",
+                h2 { class: "text-sm tracking-[3px] uppercase text-fg-dim border-b border-line pb-2 mb-5",
+                    "Under the hood" }
+                table { class: "w-full border-collapse text-sm",
+                    tbody {
+                        for (label, body) in SPECS {
+                            tr { td { class: "border border-line p-3 align-top text-amber whitespace-nowrap w-[1%]", "{label}" }
+                                td { class: "border border-line p-3 align-top text-fg-dim", "{body}" } }
+                        }
+                    }
                 }
             }
 
-            footer {
-                a { href: "https://github.com/Michael-cmd-sys/hive", "github" }
-                a { href: "https://github.com/Michael-cmd-sys/hive/releases", "releases" }
-                span { "mit license" }
+            footer { class: "mt-14 border-t border-line pt-5 text-fg-dim text-xs flex flex-wrap gap-5",
+                a { class: "text-amber border-b border-dashed border-amber hover:bg-amber/10",
+                    href: "https://github.com/Michael-cmd-sys/hive", "github" }
+                a { class: "text-amber border-b border-dashed border-amber hover:bg-amber/10",
+                    href: "https://github.com/Michael-cmd-sys/hive/releases", "releases" }
+                span { "MIT license" }
                 span { "build 0.1.0" }
             }
         }
