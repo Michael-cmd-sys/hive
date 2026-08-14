@@ -17,6 +17,14 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 ### Features
 
 - Add hive ASCII banner on Machines (landing) tab
+
+### Miscellaneous
+
+- Update CHANGELOG [skip ci]
+
+### Ux
+
+- Add interactive add-machine wizard, command/MPI input, help bar; drop ascii banner; fix windows build via msvc runner
 ## [0.1.0] — 2026-08-14
 
 ### Bug Fixes
