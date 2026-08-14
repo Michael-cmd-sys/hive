@@ -5,5 +5,9 @@ edition = "2021"
 description = "Project website for hive — SSH cluster orchestration for the swarm"
 license = "MIT"
 
+[[bin]]
+name = "hive-site"
+path = "src/main.rs"
+
 [dependencies]
 dioxus = { version = "0.6", features = ["web"] }
