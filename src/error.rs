@@ -8,6 +8,8 @@ pub enum HiveError {
     Io(#[from] std::io::Error),
     #[error("config error: {0}")]
     Config(String),
+    #[error("yaml error: {0}")]
+    Yaml(#[from] serde_yaml::Error),
     #[error("auth failed for {0}")]
     Auth(String),
     #[error("command failed on {host}: exit {code}\n{stderr}")]

@@ -1,0 +1,10 @@
+/home/cryptder/workspace/github.com/Michael-cmd-sys/hive/target/debug/deps/module_lattice-292be7cb2701cbb9.d: /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/lib.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/algebra.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/encoding.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/maybe_box.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/truncate.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/../README.md
+
+/home/cryptder/workspace/github.com/Michael-cmd-sys/hive/target/debug/deps/libmodule_lattice-292be7cb2701cbb9.rmeta: /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/lib.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/algebra.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/encoding.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/maybe_box.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/truncate.rs /home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/../README.md
+
+/home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/lib.rs:
+/home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/algebra.rs:
+/home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/encoding.rs:
+/home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/maybe_box.rs:
+/home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/truncate.rs:
+/home/cryptder/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/module-lattice-0.2.3/src/../README.md:
