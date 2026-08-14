@@ -32,6 +32,6 @@ cargo run -- --config ./cluster.yaml
 - q: quit
 
 ## Security
-Passwords are stored in plaintext YAML (per requirement). The app writes the file
-with 0600 permissions, redacts secrets in logs, and never transmits host keys
-verification is skipped (lab-only). Prefer SSH keys where possible.
+Passwords are stored in plaintext YAML (per the project requirement). The app writes the file
+with 0600 permissions, redacts secrets in `Debug` output and logs, and skips SSH host-key
+verification (lab-only, not for production). Prefer SSH keys where possible.

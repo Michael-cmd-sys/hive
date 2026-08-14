@@ -4,6 +4,14 @@ use hive::config::ClusterConfig;
 use hive::tui;
 use std::path::PathBuf;
 
+struct TerminalGuard;
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "hive")]
 struct Cli {
@@ -20,13 +28,12 @@ fn main() -> anyhow::Result<()> {
 
     crossterm::terminal::enable_raw_mode()?;
     crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen)?;
+    let _guard = TerminalGuard;
 
     let mut state = AppState::default();
     if let Err(e) = tui::run(&mut state, cfg) {
         eprintln!("tui error: {e}");
     }
 
-    crossterm::terminal::disable_raw_mode()?;
-    crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen)?;
     Ok(())
 }

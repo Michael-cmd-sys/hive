@@ -1,4 +1,4 @@
-use hive::config::{Auth, ClusterConfig, MachineConfig};
+use hive::config::{Auth, MachineConfig};
 use hive::ssh::Session;
 
 #[tokio::test]
@@ -18,5 +18,4 @@ async fn connects_to_localhost_if_available() {
     let mut s = Session::connect(&mc).await.expect("connect");
     let o = s.exec("echo hi").await.expect("exec");
     assert!(o.stdout.contains("hi"));
-    let _ = ClusterConfig::default();
 }
