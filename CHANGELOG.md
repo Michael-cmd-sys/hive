@@ -24,9 +24,11 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org)
 - Vim + arrow-key navigation (h/l tabs, j/k list, ←/→ tabs)
 - Launch splash screen with the HIVE banner
 - Visible run/MPI scope toggle (t) — all nodes or selected machine
+- Monitor gauges + per-node process breakdown
 
 ### Miscellaneous
 
+- Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
 - Update CHANGELOG [skip ci]
