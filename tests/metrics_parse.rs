@@ -1,5 +1,5 @@
 use hive::metrics::{
-    parse_free_m, parse_loadavg, parse_mpstat, parse_nproc, parse_uptime, MachineStats,
+    parse_free_m, parse_loadavg, parse_mpstat, parse_nproc, parse_ps, parse_uptime, MachineStats,
 };
 
 #[test]
@@ -50,6 +50,7 @@ fn builds_stats_struct() {
         load5: 0.3,
         load15: 0.2,
         uptime_secs: 12345.0,
+        top_procs: vec![],
     };
     assert!(s.cpu_percent < 100.0);
 
@@ -62,6 +63,7 @@ fn builds_stats_struct() {
         load5: 0.3,
         load15: 0.2,
         uptime_secs: 12345.0,
+        top_procs: vec![],
     };
     assert_eq!(s, s2);
 
@@ -74,4 +76,14 @@ fn builds_stats_struct() {
     assert_eq!(def.load5, 0.0);
     assert_eq!(def.load15, 0.0);
     assert_eq!(def.uptime_secs, 0.0);
+}
+
+#[test]
+fn parses_ps_output() {
+    let out = "  PID COMMAND          %CPU %MEM\n  123 mpirun           45.0  2.1\n  456 bash              0.5  0.2\n  bad line here\n";
+    let procs = parse_ps(out);
+    assert_eq!(procs.len(), 2, "skips header and malformed lines");
+    assert_eq!(procs[0].pid, 123);
+    assert_eq!(procs[0].comm, "mpirun");
+    assert_eq!(procs[0].cpu, 45.0);
 }

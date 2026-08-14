@@ -8,6 +8,16 @@ pub struct MachineStats {
     pub load5: f32,
     pub load15: f32,
     pub uptime_secs: f64,
+    /// Top processes by CPU on the node (collected via `ps`).
+    pub top_procs: Vec<ProcInfo>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ProcInfo {
+    pub pid: u32,
+    pub comm: String,
+    pub cpu: f32,
+    pub mem: f32,
 }
 
 pub fn parse_nproc(s: &str) -> anyhow::Result<u32> {
@@ -85,4 +95,29 @@ pub fn parse_uptime(s: &str) -> anyhow::Result<f64> {
         .next()
         .ok_or_else(|| anyhow::anyhow!("empty"))?;
     Ok(first.parse()?)
+}
+
+/// Parse `ps -eo pid,comm,%cpu,%mem` output into process records.
+pub fn parse_ps(s: &str) -> Vec<ProcInfo> {
+    let mut out = Vec::new();
+    for line in s.lines().skip(1) {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() < 4 {
+            continue;
+        }
+        let pid = match cols[0].parse::<u32>() {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let comm = cols[1].to_string();
+        let cpu = cols[2].parse::<f32>().unwrap_or(0.0);
+        let mem = cols[3].parse::<f32>().unwrap_or(0.0);
+        out.push(ProcInfo {
+            pid,
+            comm,
+            cpu,
+            mem,
+        });
+    }
+    out
 }

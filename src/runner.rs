@@ -1,7 +1,7 @@
 use crate::app::{Action, ConnStatus, UiEvent};
 use crate::config::{ClusterConfig, MachineConfig};
 use crate::jobs::{dispatch_mpi, run_on, Worker};
-use crate::metrics::{MachineStats, parse_free_m, parse_loadavg, parse_mpstat, parse_nproc, parse_uptime};
+use crate::metrics::{MachineStats, parse_free_m, parse_loadavg, parse_mpstat, parse_nproc, parse_ps, parse_uptime};
 use crate::ssh::Session;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -19,6 +19,21 @@ async fn collect_stats(session: &mut Session) -> anyhow::Result<MachineStats> {
         Err(_) => 100.0,
     };
     let uptime = parse_uptime(&session.exec("cat /proc/uptime").await?.stdout)?;
+    // Top processes by CPU (portable: sort in Rust, no GNU --sort needed).
+    let top_procs = session
+        .exec("ps -eo pid,comm,%cpu,%mem 2>/dev/null | head -n 16")
+        .await
+        .map(|o| {
+            let mut v = parse_ps(&o.stdout);
+            v.sort_by(|a, b| {
+                b.cpu
+                    .partial_cmp(&a.cpu)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            v.truncate(5);
+            v
+        })
+        .unwrap_or_default();
     Ok(MachineStats {
         cores,
         cpu_percent: 100.0 - cpu_idle,
@@ -26,6 +41,7 @@ async fn collect_stats(session: &mut Session) -> anyhow::Result<MachineStats> {
         mem_total_mib: mem_total,
         load1, load5, load15,
         uptime_secs: uptime,
+        top_procs,
     })
 }
 
