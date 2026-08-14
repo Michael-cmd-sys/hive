@@ -1,0 +1,23 @@
+[package]
+name = "hive"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+russh = "0.62"
+ratatui = "0.29"
+crossterm = "0.28"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "2"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+chrono = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util", "macros"] }
+
+[[bin]]
+name = "hive"
+path = "src/main.rs"
